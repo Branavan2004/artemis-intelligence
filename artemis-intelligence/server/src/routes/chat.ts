@@ -1,7 +1,9 @@
 import { Router, Request, Response } from 'express';
+import { GoogleGenAI } from '@google/genai';
 import { PrismaClient } from '@prisma/client';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { getArtemisIIMissionData } from '../services/nasa';
+import { chunkFallbackResponse, generateFallbackChatResponse } from '../services/chatFallback';
 
 const prisma = new PrismaClient();
 export const chatRouter = Router();
@@ -19,6 +21,17 @@ ${JSON.stringify(getArtemisIIMissionData(), null, 2)}
 
 Be engaging, informative, and enthusiastic about space exploration.`;
 
+async function saveChatMessages(userId: string | undefined, message: string, response: string) {
+  if (!userId) return;
+
+  await prisma.chatMessage.createMany({
+    data: [
+      { userId, role: 'user', content: message },
+      { userId, role: 'assistant', content: response },
+    ],
+  });
+}
+
 // Streaming chat endpoint
 chatRouter.post('/stream', authenticate, async (req: AuthRequest, res: Response) => {
   const { message, history = [] } = req.body;
@@ -29,48 +42,56 @@ chatRouter.post('/stream', authenticate, async (req: AuthRequest, res: Response)
   res.setHeader('Connection', 'keep-alive');
 
   try {
-    // Dynamically import Anthropic only when API key is real
-    const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('Missing Gemini API key');
+    }
 
-    const messages = [
-      ...history.map((m: { role: string; content: string }) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
-      { role: 'user' as const, content: message },
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+    const contents = [
+      ...history
+        .filter((m: { role?: string; content?: string }) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .map((m: { role: string; content: string }) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        })),
+      { role: 'user' as const, parts: [{ text: message }] },
     ];
 
     let fullResponse = '';
 
-    const stream = await anthropic.messages.stream({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      system: SYSTEM_PROMPT,
-      messages,
+    const stream = await ai.models.generateContentStream({
+      model: 'gemini-2.5-flash',
+      contents,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+      },
     });
 
     for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        const text = chunk.delta.text;
+      const text = chunk.text;
+
+      if (text) {
         fullResponse += text;
         res.write(`data: ${JSON.stringify({ text })}\n\n`);
       }
     }
 
-    if (req.userId) {
-      await prisma.chatMessage.createMany({
-        data: [
-          { userId: req.userId, role: 'user', content: message },
-          { userId: req.userId, role: 'assistant', content: fullResponse },
-        ],
-      });
-    }
+    await saveChatMessages(req.userId, message, fullResponse);
 
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
   } catch (err) {
-    res.write(`data: ${JSON.stringify({ error: 'AI service unavailable' })}\n\n`);
+    console.error('Chat model unavailable, using fallback response:', err);
+
+    const fallbackResponse = generateFallbackChatResponse(message);
+
+    for (const chunk of chunkFallbackResponse(fallbackResponse)) {
+      res.write(`data: ${JSON.stringify({ text: `${chunk} `, fallback: true })}\n\n`);
+    }
+
+    await saveChatMessages(req.userId, message, fallbackResponse);
+    res.write(`data: ${JSON.stringify({ done: true, fallback: true })}\n\n`);
     res.end();
   }
 });

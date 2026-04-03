@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@google/genai": "^1.48.0",
     "@prisma/client": "^5.10.0",
     "axios": "^1.6.7",
     "bcryptjs": "^2.4.3",

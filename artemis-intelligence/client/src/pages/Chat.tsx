@@ -1,10 +1,19 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Send, Bot, User } from 'lucide-react'
-import { API_BASE_URL } from '../lib/api'
+import { API_BASE_URL, api } from '../lib/api'
+import { clearAuthSession, readAuthToken } from '../lib/auth'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
+}
+
+interface ChatHistoryItem {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt: string
 }
 
 const SUGGESTED = [
@@ -15,33 +24,99 @@ const SUGGESTED = [
   'How is Artemis different from Apollo?',
 ]
 
+const WELCOME_MESSAGE: Message = {
+  role: 'assistant',
+  content: 'Hello! I\'m Artemis AI 🚀 I\'m your intelligent guide to the Artemis II mission. Ask me anything about the crew, spacecraft, mission phases, or how this historic mission compares to Apollo. What would you like to know?'
+}
+
 export default function Chat() {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Hello! I\'m Artemis AI 🚀 I\'m your intelligent guide to the Artemis II mission. Ask me anything about the crew, spacecraft, mission phases, or how this historic mission compares to Apollo. What would you like to know?' }
-  ])
+  const navigate = useNavigate()
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [historyError, setHistoryError] = useState('')
+  const [isFallbackMode, setIsFallbackMode] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  useEffect(() => {
+    let active = true
+
+    async function loadHistory() {
+      const token = readAuthToken()
+
+      if (!token) {
+        clearAuthSession()
+        navigate('/login', { replace: true, state: { from: '/chat' } })
+        return
+      }
+
+      setHistoryLoading(true)
+      setHistoryError('')
+
+      try {
+        const { data } = await api.get<ChatHistoryItem[]>('/api/chat/history', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+
+        if (!active) return
+
+        const restoredMessages = data
+          .filter((message) => message.role === 'user' || message.role === 'assistant')
+          .map((message) => ({
+            role: message.role,
+            content: message.content,
+          }))
+
+        setMessages(restoredMessages.length > 0 ? restoredMessages : [WELCOME_MESSAGE])
+      } catch (error) {
+        if (!active) return
+
+        setMessages([WELCOME_MESSAGE])
+        setHistoryError('Could not load previous chat history.')
+
+        if (typeof error === 'object' && error !== null && 'response' in error) {
+          const status = (error as { response?: { status?: number } }).response?.status
+
+          if (status === 401) {
+            clearAuthSession()
+            navigate('/login', { replace: true, state: { from: '/chat' } })
+            return
+          }
+        }
+      } finally {
+        if (active) {
+          setHistoryLoading(false)
+        }
+      }
+    }
+
+    loadHistory()
+
+    return () => {
+      active = false
+    }
+  }, [navigate])
+
   async function sendMessage(text?: string) {
     const message = text || input.trim()
-    if (!message || loading) return
+    if (!message || loading || historyLoading) return
 
     setInput('')
+    setHistoryError('')
+    setIsFallbackMode(false)
     setMessages(prev => [...prev, { role: 'user', content: message }])
     setLoading(true)
 
     try {
-      const token = localStorage.getItem('artemis_token')
+      const token = readAuthToken()
       if (!token) {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: 'AI chat is connected to the backend, but this page still needs the upcoming login flow to send a real JWT. Auth is the next frontend step.'
-        }])
+        clearAuthSession()
+        navigate('/login', { replace: true, state: { from: '/chat' } })
         return
       }
 
@@ -69,6 +144,9 @@ export default function Chat() {
         for (const line of lines) {
           try {
             const data = JSON.parse(line.slice(6))
+            if (data.fallback) {
+              setIsFallbackMode(true)
+            }
             if (data.error) {
               throw new Error(data.error)
             }
@@ -97,6 +175,18 @@ export default function Chat() {
         <h1 className="font-display text-4xl font-black text-white mb-2">AI CHAT</h1>
         <p className="text-gray-400">Ask Artemis AI anything about the mission</p>
       </div>
+
+      {isFallbackMode && (
+        <div className="mb-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
+          Fallback mode active. Live Gemini is unavailable right now, so Artemis AI is answering from the local mission knowledge base.
+        </div>
+      )}
+
+      {(historyLoading || historyError) && (
+        <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${historyLoading ? 'border-artemis-blue/30 bg-artemis-blue/10 text-artemis-blue' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>
+          {historyLoading ? 'Loading previous chat history...' : historyError}
+        </div>
+      )}
 
       {/* Suggested questions */}
       <div className="flex gap-2 flex-wrap mb-4">
@@ -140,7 +230,7 @@ export default function Chat() {
         />
         <button
           onClick={() => sendMessage()}
-          disabled={loading || !input.trim()}
+          disabled={loading || historyLoading || !input.trim()}
           className="bg-artemis-blue hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-3 rounded-xl transition-colors"
         >
           <Send className="w-5 h-5" />
