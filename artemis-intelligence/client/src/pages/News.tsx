@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import axios from 'axios'
+import { api } from '../lib/api'
 
 interface Article {
   id: string
@@ -16,7 +16,7 @@ export default function News() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    axios.get('http://localhost:4000/api/news')
+    api.get('/api/news')
       .then(r => setArticles(r.data))
       .finally(() => setLoading(false))
   }, [])

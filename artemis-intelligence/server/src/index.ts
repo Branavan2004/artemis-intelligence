@@ -11,6 +11,7 @@ import { newsRouter } from './routes/news';
 import { chatRouter } from './routes/chat';
 import { errorHandler } from './middleware/errorHandler';
 import { initRedis } from './services/redis';
+import { getMissionUpdate } from './constants/mission';
 
 dotenv.config();
 
@@ -46,6 +47,7 @@ io.on('connection', (socket) => {
 
   socket.on('subscribe:mission', () => {
     socket.join('mission-updates');
+    socket.emit('mission:update', getMissionUpdate());
   });
 
   socket.on('disconnect', () => {
@@ -53,34 +55,8 @@ io.on('connection', (socket) => {
   });
 });
 
-function getMissionElapsedTime(): string {
-  const launchDate = new Date('2026-04-01T22:24:00Z');
-  const now = new Date();
-  const diff = now.getTime() - launchDate.getTime();
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  return `T+${hours}h ${minutes}m`;
-}
-
-function getCurrentMissionPhase(): string {
-  const launchDate = new Date('2026-04-01T22:24:00Z');
-  const now = new Date();
-  const hoursElapsed = (now.getTime() - launchDate.getTime()) / (1000 * 60 * 60);
-
-  if (hoursElapsed < 0) return 'Pre-Launch';
-  if (hoursElapsed < 24) return 'Earth Orbit & Systems Check';
-  if (hoursElapsed < 72) return 'Translunar Injection';
-  if (hoursElapsed < 96) return 'Lunar Flyby';
-  if (hoursElapsed < 216) return 'Return Trajectory';
-  return 'Reentry & Splashdown';
-}
-
 setInterval(() => {
-  io.to('mission-updates').emit('mission:update', {
-    timestamp: new Date().toISOString(),
-    missionElapsedTime: getMissionElapsedTime(),
-    phase: getCurrentMissionPhase(),
-  });
+  io.to('mission-updates').emit('mission:update', getMissionUpdate());
 }, 30000);
 
 const PORT = process.env.PORT || 4000;

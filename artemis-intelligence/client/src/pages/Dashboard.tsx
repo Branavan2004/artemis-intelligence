@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import axios from 'axios'
+import { io } from 'socket.io-client'
+import { api, SOCKET_URL } from '../lib/api'
+import { getMissionElapsedTime, getMissionHoursElapsed, getMissionPhase } from '../lib/mission'
 
 interface MissionData {
   name: string
@@ -13,6 +15,12 @@ interface MissionData {
   spacecraft: { name: string; rocket: string; launchSite: string; splashdownTarget: string }
 }
 
+interface MissionUpdate {
+  timestamp: string
+  missionElapsedTime: string
+  phase: string
+}
+
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0 }
@@ -23,30 +31,51 @@ export default function Dashboard() {
   const [elapsed, setElapsed] = useState('')
   const [currentPhase, setCurrentPhase] = useState('')
   const [apod, setApod] = useState<{ url: string; title: string; explanation: string } | null>(null)
+  const [telemetryState, setTelemetryState] = useState<'connecting' | 'live' | 'offline'>('connecting')
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
 
   useEffect(() => {
-    axios.get('http://localhost:4000/api/mission').then(r => setMission(r.data))
-    axios.get('http://localhost:4000/api/mission/apod').then(r => setApod(r.data)).catch(() => {})
+    api.get('/api/mission').then(r => setMission(r.data))
+    api.get('/api/mission/apod').then(r => setApod(r.data)).catch(() => {})
   }, [])
 
   useEffect(() => {
+    if (!mission) return
+
     const tick = () => {
-      const launch = new Date('2026-04-01T22:24:00Z')
-      const now = new Date()
-      const diff = now.getTime() - launch.getTime()
-      const hours = Math.floor(diff / (1000 * 60 * 60))
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000)
-      setElapsed(`T+ ${hours}h ${minutes}m ${seconds}s`)
-      if (hours < 24) setCurrentPhase('Earth Orbit & Systems Check')
-      else if (hours < 72) setCurrentPhase('Translunar Injection')
-      else if (hours < 96) setCurrentPhase('Lunar Flyby')
-      else if (hours < 216) setCurrentPhase('Return Trajectory')
-      else setCurrentPhase('Reentry & Splashdown')
+      setElapsed(getMissionElapsedTime(mission.launchDate))
+      setCurrentPhase(getMissionPhase(mission.launchDate))
     }
+
     tick()
     const interval = setInterval(tick, 1000)
     return () => clearInterval(interval)
+  }, [mission])
+
+  useEffect(() => {
+    const socket = io(SOCKET_URL)
+
+    socket.on('connect', () => {
+      setTelemetryState('live')
+      socket.emit('subscribe:mission')
+    })
+
+    socket.on('connect_error', () => {
+      setTelemetryState('offline')
+    })
+
+    socket.on('disconnect', () => {
+      setTelemetryState('offline')
+    })
+
+    socket.on('mission:update', (update: MissionUpdate) => {
+      setCurrentPhase(update.phase)
+      setLastSyncAt(update.timestamp)
+    })
+
+    return () => {
+      socket.disconnect()
+    }
   }, [])
 
   if (!mission) return (
@@ -54,6 +83,8 @@ export default function Dashboard() {
       <div className="text-artemis-blue font-mono animate-pulse">Loading mission data...</div>
     </div>
   )
+
+  const hoursElapsed = getMissionHoursElapsed(mission.launchDate)
 
   return (
     <motion.div
@@ -77,6 +108,17 @@ export default function Dashboard() {
           <div className="text-right">
             <div className="font-mono text-artemis-blue text-3xl font-bold">{elapsed}</div>
             <div className="text-gray-400 text-sm mt-1">Mission Elapsed Time</div>
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <div className={`h-2 w-2 rounded-full ${telemetryState === 'live' ? 'bg-artemis-green animate-pulse' : telemetryState === 'connecting' ? 'bg-yellow-400 animate-pulse' : 'bg-red-500'}`}></div>
+              <span className={`text-xs font-mono ${telemetryState === 'live' ? 'text-artemis-green' : telemetryState === 'connecting' ? 'text-yellow-300' : 'text-red-400'}`}>
+                {telemetryState === 'live' ? 'LIVE TELEMETRY' : telemetryState === 'connecting' ? 'CONNECTING' : 'OFFLINE'}
+              </span>
+            </div>
+            {lastSyncAt && (
+              <div className="text-gray-500 text-xs mt-1">
+                Last sync {new Date(lastSyncAt).toLocaleTimeString()}
+              </div>
+            )}
           </div>
         </div>
         <div className="mt-6">
@@ -134,9 +176,6 @@ export default function Dashboard() {
           <h2 className="font-display text-xl font-bold text-white mb-4">Mission Phases</h2>
           <div className="space-y-3">
             {mission.phases.map((phase) => {
-              const launch = new Date('2026-04-01T22:24:00Z')
-              const now = new Date()
-              const hoursElapsed = (now.getTime() - launch.getTime()) / (1000 * 60 * 60)
               const isComplete = hoursElapsed > phase.endHour
               const isActive = hoursElapsed >= phase.startHour && hoursElapsed < phase.endHour
               return (

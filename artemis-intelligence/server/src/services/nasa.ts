@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { cacheGet, cacheSet } from './redis';
+import { ARTEMIS_II_LAUNCH_DATE, getMissionProgress, getMissionStatus } from '../constants/mission';
 
 const NASA_BASE_URL = 'https://api.nasa.gov';
 const API_KEY = process.env.NASA_API_KEY || 'DEMO_KEY';
@@ -31,18 +32,12 @@ export async function getNASAImages(query: string) {
 }
 
 export function getArtemisIIMissionData() {
-  const launchDate = new Date('2026-04-01T22:24:00Z');
-  const now = new Date();
-  const missionDurationMs = 10 * 24 * 60 * 60 * 1000;
-  const elapsed = now.getTime() - launchDate.getTime();
-  const progress = Math.min(Math.max((elapsed / missionDurationMs) * 100, 0), 100);
-
   return {
     name: 'Artemis II',
-    launchDate: launchDate.toISOString(),
+    launchDate: ARTEMIS_II_LAUNCH_DATE.toISOString(),
     duration: '10 days',
-    progress: Math.round(progress),
-    status: elapsed < 0 ? 'Pre-Launch' : elapsed > missionDurationMs ? 'Completed' : 'Active',
+    progress: Math.round(getMissionProgress()),
+    status: getMissionStatus(),
     crew: [
       { name: 'Reid Wiseman', role: 'Commander', agency: 'NASA', record: 'Oldest person to leave low Earth orbit' },
       { name: 'Victor Glover', role: 'Pilot', agency: 'NASA', record: 'First person of color beyond low Earth orbit' },
