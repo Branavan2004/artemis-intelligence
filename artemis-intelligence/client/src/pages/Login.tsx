@@ -38,21 +38,21 @@ export default function Login() {
   }
 
   return (
-    <div className="mx-auto max-w-md">
-      <div className="rounded-3xl border border-gray-800 bg-space-900 p-8 shadow-2xl shadow-black/20">
-        <div className="mb-8">
-          <div className="mb-2 text-sm font-mono uppercase tracking-[0.3em] text-artemis-blue">
-            Crew Access
-          </div>
-          <h1 className="font-display text-4xl font-black text-white">Log In</h1>
-          <p className="mt-3 text-sm leading-relaxed text-gray-400">
-            Sign in to unlock chat history, saved mission updates, and the personalized dashboard flow.
-          </p>
+    <div className="flex min-h-[calc(100vh-160px)] items-center justify-center">
+      <div className="card-plain w-full max-w-[440px] p-8">
+        <div className="border-b border-[color:var(--border)] pb-6">
+          <p className="text-sm font-medium tracking-[-0.02em] text-[color:var(--text)]">Artemis Intelligence</p>
         </div>
 
-        <form className="space-y-5" onSubmit={handleSubmit}>
+        <div className="pt-6">
+          <p className="section-label">Log in</p>
+          <h1 className="section-title mt-2">Welcome back</h1>
+          <p className="mt-3 text-sm text-[color:var(--muted)]">Enter your email and password to continue.</p>
+        </div>
+
+        <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
           <div>
-            <label className="mb-2 block text-sm font-medium text-gray-300" htmlFor="login-email">
+            <label className="mb-2 block text-sm font-medium text-[color:var(--text)]" htmlFor="login-email">
               Email
             </label>
             <input
@@ -60,15 +60,14 @@ export default function Login() {
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="captain@artemis.ai"
               autoComplete="email"
               required
-              className="w-full rounded-xl border border-gray-700 bg-space-950 px-4 py-3 text-white placeholder:text-gray-500 focus:border-artemis-blue focus:outline-none"
+              className="input-field"
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-gray-300" htmlFor="login-password">
+            <label className="mb-2 block text-sm font-medium text-[color:var(--text)]" htmlFor="login-password">
               Password
             </label>
             <input
@@ -76,32 +75,27 @@ export default function Login() {
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Enter your password"
               autoComplete="current-password"
               required
-              className="w-full rounded-xl border border-gray-700 bg-space-950 px-4 py-3 text-white placeholder:text-gray-500 focus:border-artemis-blue focus:outline-none"
+              className="input-field"
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-artemis-blue px-4 py-3 font-semibold text-white transition-colors hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? 'Signing In...' : 'Continue'}
+          <button type="submit" disabled={loading} className="button-primary w-full">
+            {loading ? 'Signing in...' : 'Log in'}
           </button>
         </form>
 
         {error && (
-          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <div className="mt-4 rounded-lg border border-amber-500/40 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
             {error}
           </div>
         )}
 
-        <p className="mt-6 text-center text-sm text-gray-400">
-          New here?{' '}
-          <Link to="/register" className="font-medium text-artemis-blue hover:text-sky-400">
-            Create an account
+        <p className="mt-6 text-sm text-[color:var(--muted)]">
+          Don&apos;t have an account?{' '}
+          <Link to="/register" className="button-link">
+            Create one
           </Link>
         </p>
       </div>

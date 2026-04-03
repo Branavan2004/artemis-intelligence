@@ -6,6 +6,7 @@ import Crew from './pages/Crew'
 import Chat from './pages/Chat'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import Replay from './pages/Replay'
 import RequireAuth from './components/RequireAuth'
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
+          <Route path="replay" element={<Replay />} />
           <Route path="news" element={<News />} />
           <Route path="crew" element={<Crew />} />
           <Route path="chat" element={<RequireAuth><Chat /></RequireAuth>} />

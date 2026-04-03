@@ -8,7 +8,8 @@ const crew = [
     record: 'Oldest person to leave low Earth orbit',
     bio: 'Navy test pilot and NASA astronaut. Previously served as Chief of the Astronaut Office. This is his second spaceflight.',
     missions: ['Expedition 40/41', 'Artemis II'],
-    color: 'from-blue-600 to-blue-800',
+    borderClass: 'border-l-blue-600',
+    avatarClass: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
     initials: 'RW',
   },
   {
@@ -18,7 +19,8 @@ const crew = [
     record: 'First person of color beyond low Earth orbit',
     bio: 'Navy pilot and NASA astronaut. Previously flew to the ISS on Crew Dragon. Member of the first operational Crew Dragon mission.',
     missions: ['Crew-1 (ISS)', 'Artemis II'],
-    color: 'from-purple-600 to-purple-800',
+    borderClass: 'border-l-emerald-500',
+    avatarClass: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
     initials: 'VG',
   },
   {
@@ -26,9 +28,10 @@ const crew = [
     role: 'Mission Specialist',
     agency: 'NASA',
     record: 'First woman to travel to lunar vicinity',
-    bio: 'Electrical engineer and NASA astronaut. Holds the record for longest single spaceflight by a woman — 328 days on the ISS.',
+    bio: 'Electrical engineer and NASA astronaut. Holds the record for the longest single spaceflight by a woman, after spending 328 days on the International Space Station.',
     missions: ['Expedition 59/60/61', 'Artemis II'],
-    color: 'from-pink-600 to-pink-800',
+    borderClass: 'border-l-amber-500',
+    avatarClass: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
     initials: 'CK',
   },
   {
@@ -36,74 +39,95 @@ const crew = [
     role: 'Mission Specialist',
     agency: 'CSA',
     record: 'First non-American to travel to lunar vicinity',
-    bio: 'Canadian Space Agency astronaut and former CF-18 pilot. This is his first spaceflight, making him the first Canadian beyond low Earth orbit.',
+    bio: 'Canadian Space Agency astronaut and former CF-18 pilot. This is his first spaceflight and the first time a Canadian astronaut is heading beyond low Earth orbit.',
     missions: ['Artemis II'],
-    color: 'from-red-600 to-red-800',
+    borderClass: 'border-l-amber-500',
+    avatarClass: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
     initials: 'JH',
   },
 ]
 
+const fadeIn = {
+  hidden: { opacity: 0, y: 8 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' } },
+}
+
 export default function Crew() {
   return (
-    <motion.div
-      className="space-y-6"
-      initial="hidden"
-      animate="show"
-      variants={{ show: { transition: { staggerChildren: 0.15 } } }}
-    >
-      <motion.div variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}>
-        <h1 className="font-display text-4xl font-black text-white mb-2">CREW</h1>
-        <p className="text-gray-400">Meet the four astronauts making history on Artemis II</p>
-      </motion.div>
+    <div className="page">
+      <motion.section initial="hidden" animate="show" variants={fadeIn} className="page-header-split">
+        <div className="page-header">
+          <p className="section-label">Crew</p>
+          <h1 className="page-title">Crew profiles</h1>
+          <p className="page-copy">
+            The four Artemis II astronauts, their mission roles, and the milestones each one brings to the flight.
+          </p>
+        </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {crew.map((member, i) => (
-          <motion.div
-            key={member.name}
-            variants={{ hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0 } }}
-            whileHover={{ scale: 1.02 }}
-            transition={{ duration: 0.2 }}
-            className="bg-space-900 border border-gray-800 hover:border-gray-600 rounded-2xl p-6 transition-colors cursor-default"
-          >
-            <div className="flex items-start gap-4 mb-4">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: i * 0.15 + 0.3, type: 'spring' }}
-                className={`w-16 h-16 rounded-full bg-gradient-to-br ${member.color} flex items-center justify-center flex-shrink-0`}
-              >
-                <span className="font-display font-bold text-white text-lg">{member.initials}</span>
-              </motion.div>
-              <div>
-                <h2 className="font-display text-xl font-bold text-white">{member.name}</h2>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-artemis-blue text-sm font-medium">{member.role}</span>
-                  <span className="text-gray-600">·</span>
-                  <span className="text-gray-400 text-sm">{member.agency}</span>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[
+            ['Crew size', '4'],
+            ['Agencies', '2'],
+            ['Historic firsts', '3+'],
+          ].map(([label, value]) => (
+            <div key={label} className="card-plain p-6">
+              <p className="section-label">{label}</p>
+              <div className="value-display mt-4">{value}</div>
+            </div>
+          ))}
+        </div>
+      </motion.section>
+
+      <motion.section initial="hidden" animate="show" variants={fadeIn} className="grid gap-6 md:grid-cols-2">
+        {crew.map((member) => (
+          <article key={member.name} className={`card-plain border-l-4 p-6 ${member.borderClass}`}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold ${member.avatarClass}`}>
+                  {member.initials}
                 </div>
+
+                <div>
+                  <h2 className="text-xl font-semibold tracking-[-0.02em] text-[color:var(--text)]">{member.name}</h2>
+                  <p className="mt-1 text-sm text-[color:var(--muted)]">
+                    {member.role} · {member.agency}
+                  </p>
+                </div>
+              </div>
+
+              <span className="rounded-full border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--muted)]">
+                {member.agency}
+              </span>
+            </div>
+
+            <div className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+              <div>
+                <p className="eyebrow">Background</p>
+                <p className="mt-2 text-sm leading-7 text-[color:var(--muted)]">{member.bio}</p>
+              </div>
+
+              <div className="card-muted p-4">
+                <p className="eyebrow">Record</p>
+                <p className="mt-2 text-sm font-medium leading-6 text-[color:var(--text)]">{member.record}</p>
               </div>
             </div>
 
-            <div className="bg-artemis-blue/10 border border-artemis-blue/20 rounded-lg px-3 py-2 mb-4">
-              <span className="text-artemis-blue text-xs font-mono">🏆 RECORD: </span>
-              <span className="text-white text-sm">{member.record}</span>
-            </div>
-
-            <p className="text-gray-400 text-sm leading-relaxed mb-4">{member.bio}</p>
-
-            <div>
-              <div className="text-gray-500 text-xs font-mono uppercase mb-2">Missions</div>
-              <div className="flex flex-wrap gap-2">
-                {member.missions.map((m) => (
-                  <span key={m} className={`text-xs px-2 py-1 rounded-full ${m === 'Artemis II' ? 'bg-artemis-blue/20 text-artemis-blue border border-artemis-blue/30' : 'bg-gray-800 text-gray-400'}`}>
-                    {m}
+            <div className="mt-6 pt-6 border-t border-[color:var(--border)]">
+              <p className="eyebrow">Mission history</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {member.missions.map((mission) => (
+                  <span
+                    key={mission}
+                    className="rounded-full border border-[color:var(--border)] px-3 py-1 text-xs text-[color:var(--muted)]"
+                  >
+                    {mission}
                   </span>
                 ))}
               </div>
             </div>
-          </motion.div>
+          </article>
         ))}
-      </div>
-    </motion.div>
+      </motion.section>
+    </div>
   )
 }

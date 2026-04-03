@@ -40,21 +40,21 @@ export default function Register() {
   }
 
   return (
-    <div className="mx-auto max-w-md">
-      <div className="rounded-3xl border border-gray-800 bg-space-900 p-8 shadow-2xl shadow-black/20">
-        <div className="mb-8">
-          <div className="mb-2 text-sm font-mono uppercase tracking-[0.3em] text-artemis-green">
-            Mission Onboarding
-          </div>
-          <h1 className="font-display text-4xl font-black text-white">Create Account</h1>
-          <p className="mt-3 text-sm leading-relaxed text-gray-400">
-            Set up your profile so the app can save articles, remember your chat history, and personalize the experience.
-          </p>
+    <div className="flex min-h-[calc(100vh-160px)] items-center justify-center">
+      <div className="card-plain w-full max-w-[440px] p-8">
+        <div className="border-b border-[color:var(--border)] pb-6">
+          <p className="text-sm font-medium tracking-[-0.02em] text-[color:var(--text)]">Artemis Intelligence</p>
         </div>
 
-        <form className="space-y-5" onSubmit={handleSubmit}>
+        <div className="pt-6">
+          <p className="section-label">Create account</p>
+          <h1 className="section-title mt-2">Get started</h1>
+          <p className="mt-3 text-sm text-[color:var(--muted)]">Create an account to use the protected chat workspace.</p>
+        </div>
+
+        <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
           <div>
-            <label className="mb-2 block text-sm font-medium text-gray-300" htmlFor="register-name">
+            <label className="mb-2 block text-sm font-medium text-[color:var(--text)]" htmlFor="register-name">
               Name
             </label>
             <input
@@ -62,15 +62,14 @@ export default function Register() {
               type="text"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Reid Wiseman"
               autoComplete="name"
               required
-              className="w-full rounded-xl border border-gray-700 bg-space-950 px-4 py-3 text-white placeholder:text-gray-500 focus:border-artemis-blue focus:outline-none"
+              className="input-field"
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-gray-300" htmlFor="register-email">
+            <label className="mb-2 block text-sm font-medium text-[color:var(--text)]" htmlFor="register-email">
               Email
             </label>
             <input
@@ -78,15 +77,14 @@ export default function Register() {
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="crew@artemis.ai"
               autoComplete="email"
               required
-              className="w-full rounded-xl border border-gray-700 bg-space-950 px-4 py-3 text-white placeholder:text-gray-500 focus:border-artemis-blue focus:outline-none"
+              className="input-field"
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-gray-300" htmlFor="register-password">
+            <label className="mb-2 block text-sm font-medium text-[color:var(--text)]" htmlFor="register-password">
               Password
             </label>
             <input
@@ -94,32 +92,27 @@ export default function Register() {
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Choose a strong password"
               autoComplete="new-password"
               minLength={8}
               required
-              className="w-full rounded-xl border border-gray-700 bg-space-950 px-4 py-3 text-white placeholder:text-gray-500 focus:border-artemis-blue focus:outline-none"
+              className="input-field"
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-artemis-green px-4 py-3 font-semibold text-space-950 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? 'Creating Account...' : 'Create Account'}
+          <button type="submit" disabled={loading} className="button-primary w-full">
+            {loading ? 'Creating account...' : 'Create account'}
           </button>
         </form>
 
         {error && (
-          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <div className="mt-4 rounded-lg border border-amber-500/40 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
             {error}
           </div>
         )}
 
-        <p className="mt-6 text-center text-sm text-gray-400">
+        <p className="mt-6 text-sm text-[color:var(--muted)]">
           Already have an account?{' '}
-          <Link to="/login" className="font-medium text-artemis-blue hover:text-sky-400">
+          <Link to="/login" className="button-link">
             Log in
           </Link>
         </p>

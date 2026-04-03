@@ -1,7 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { Rocket, Newspaper, Users, Bot, LogIn, UserPlus, LogOut, UserCircle2 } from 'lucide-react'
 import { AUTH_STATE_CHANGE_EVENT, AuthUser, clearAuthSession, readAuthUser } from '../lib/auth'
+
+const navItems = [
+  { to: '/', label: 'Dashboard', end: true },
+  { to: '/replay', label: 'Replay' },
+  { to: '/crew', label: 'Crew' },
+  { to: '/news', label: 'News' },
+  { to: '/chat', label: 'Chat' },
+]
+
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('')
+}
 
 export default function Layout() {
   const navigate = useNavigate()
@@ -28,67 +44,94 @@ export default function Layout() {
   }
 
   return (
-    <div className="min-h-screen bg-space-950">
-      <nav className="border-b border-gray-800 bg-space-900 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-center gap-3">
-            <Rocket className="text-artemis-blue w-6 h-6" />
-            <span className="font-display font-bold text-white text-lg tracking-wider">
-              ARTEMIS INTELLIGENCE
-            </span>
-            <div className="flex items-center gap-2 ml-4">
-              <div className="w-2 h-2 rounded-full bg-artemis-green animate-pulse"></div>
-              <span className="text-artemis-green text-xs font-mono">MISSION ACTIVE</span>
-            </div>
+    <div className="min-h-screen bg-[color:var(--bg)] text-[color:var(--text)]">
+      <header className="sticky top-0 z-30 border-b border-[color:var(--border)] bg-[color:var(--bg)]">
+        <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between gap-6 px-6">
+          <div className="flex items-center gap-4">
+            <NavLink to="/" className="flex items-center gap-3 text-sm font-semibold tracking-[-0.02em] text-[color:var(--text)]">
+              <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+              <span>Artemis Intelligence</span>
+            </NavLink>
+            <div className="hidden text-sm text-[color:var(--muted)] lg:block">Artemis II</div>
           </div>
-          <div className="flex flex-col gap-3 xl:items-end">
-            <div className="flex flex-wrap items-center gap-1">
-              <NavLink to="/" end className={({ isActive }) => `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${isActive ? 'bg-artemis-blue text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
-                <Rocket className="w-4 h-4" />Dashboard
+
+          <nav className="hidden flex-1 items-center justify-center gap-8 md:flex">
+            {navItems.map(({ to, label, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  `inline-flex h-16 items-center border-b-2 px-1 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'border-blue-600 text-[color:var(--text)]'
+                      : 'border-transparent text-[color:var(--muted)] hover:text-[color:var(--text)]'
+                  }`
+                }
+              >
+                {label}
               </NavLink>
-              <NavLink to="/crew" className={({ isActive }) => `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${isActive ? 'bg-artemis-blue text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
-                <Users className="w-4 h-4" />Crew
-              </NavLink>
-              <NavLink to="/news" className={({ isActive }) => `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${isActive ? 'bg-artemis-blue text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
-                <Newspaper className="w-4 h-4" />News
-              </NavLink>
-              <NavLink to="/chat" className={({ isActive }) => `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${isActive ? 'bg-artemis-blue text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
-                <Bot className="w-4 h-4" />AI Chat
-              </NavLink>
+            ))}
+          </nav>
+
+          <div className="flex items-center gap-4">
+            <div className="hidden items-center gap-2 text-sm text-[color:var(--muted)] lg:flex">
+              <span className="status-dot bg-emerald-500" />
+              <span>Mission active</span>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {currentUser ? (
-                <>
-                  <div className="flex items-center gap-3 rounded-xl border border-gray-700 bg-space-950 px-4 py-2">
-                    <UserCircle2 className="h-8 w-8 text-artemis-blue" />
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-white">{currentUser.name}</div>
-                      <div className="truncate text-xs text-gray-400">{currentUser.email}</div>
-                    </div>
+
+            {currentUser ? (
+              <>
+                <div className="flex items-center gap-3 border-l border-[color:var(--border)] pl-4">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
+                    {getInitials(currentUser.name)}
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    className="flex items-center gap-2 rounded-lg border border-gray-700 px-4 py-2 text-sm font-medium text-gray-300 transition-all hover:border-red-500/60 hover:text-red-300"
-                  >
-                    <LogOut className="w-4 h-4" />Log Out
-                  </button>
-                </>
-              ) : (
-                <>
-                  <NavLink to="/login" className={({ isActive }) => `flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all ${isActive ? 'border-artemis-blue bg-artemis-blue/10 text-artemis-blue' : 'border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'}`}>
-                    <LogIn className="w-4 h-4" />Log In
-                  </NavLink>
-                  <NavLink to="/register" className={({ isActive }) => `flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all ${isActive ? 'bg-artemis-green text-space-950' : 'bg-artemis-blue text-white hover:bg-sky-500'}`}>
-                    <UserPlus className="w-4 h-4" />Register
-                  </NavLink>
-                </>
-              )}
-            </div>
+                  <span className="hidden text-sm text-[color:var(--muted)] xl:block">{currentUser.name}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="text-sm font-medium text-[color:var(--muted)] transition-colors hover:text-[color:var(--text)]"
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center gap-4 border-l border-[color:var(--border)] pl-4 text-sm font-medium">
+                <NavLink to="/login" className="text-[color:var(--muted)] transition-colors hover:text-[color:var(--text)]">
+                  Log in
+                </NavLink>
+                <NavLink to="/register" className="text-blue-600 transition-colors hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
+                  Create account
+                </NavLink>
+              </div>
+            )}
           </div>
         </div>
-      </nav>
-      <main className="max-w-7xl mx-auto px-6 py-8">
+
+        <div className="border-t border-[color:var(--border)] md:hidden">
+          <div className="mx-auto flex h-11 max-w-[1200px] items-center gap-6 overflow-x-auto px-6">
+            {navItems.map(({ to, label, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  `inline-flex h-11 items-center whitespace-nowrap border-b-2 px-1 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'border-blue-600 text-[color:var(--text)]'
+                      : 'border-transparent text-[color:var(--muted)]'
+                  }`
+                }
+              >
+                {label}
+              </NavLink>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-[1200px] px-6 py-12">
         <Outlet />
       </main>
     </div>

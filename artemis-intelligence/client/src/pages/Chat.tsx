@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Send, Bot, User } from 'lucide-react'
+import { Send } from 'lucide-react'
 import { API_BASE_URL, api } from '../lib/api'
 import { clearAuthSession, readAuthToken } from '../lib/auth'
 
@@ -26,7 +26,8 @@ const SUGGESTED = [
 
 const WELCOME_MESSAGE: Message = {
   role: 'assistant',
-  content: 'Hello! I\'m Artemis AI 🚀 I\'m your intelligent guide to the Artemis II mission. Ask me anything about the crew, spacecraft, mission phases, or how this historic mission compares to Apollo. What would you like to know?'
+  content:
+    'I can help with mission phases, crew details, spacecraft questions, and Apollo comparisons. Ask a question to start.',
 }
 
 export default function Chat() {
@@ -109,7 +110,7 @@ export default function Chat() {
     setInput('')
     setHistoryError('')
     setIsFallbackMode(false)
-    setMessages(prev => [...prev, { role: 'user', content: message }])
+    setMessages((previous) => [...previous, { role: 'user', content: message }])
     setLoading(true)
 
     try {
@@ -120,27 +121,29 @@ export default function Chat() {
         return
       }
 
-      const res = await fetch(`${API_BASE_URL}/api/chat/stream`, {
+      const response = await fetch(`${API_BASE_URL}/api/chat/stream`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ message, history: messages }),
       })
 
-      if (!res.ok) {
+      if (!response.ok) {
         throw new Error('Unable to reach the AI stream right now.')
       }
 
-      const reader = res.body?.getReader()
+      const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       let fullText = ''
 
-      setMessages(prev => [...prev, { role: 'assistant', content: '' }])
+      setMessages((previous) => [...previous, { role: 'assistant', content: '' }])
 
       while (reader) {
         const { done, value } = await reader.read()
         if (done) break
+
         const chunk = decoder.decode(value)
-        const lines = chunk.split('\n').filter(l => l.startsWith('data: '))
+        const lines = chunk.split('\n').filter((line) => line.startsWith('data: '))
+
         for (const line of lines) {
           try {
             const data = JSON.parse(line.slice(6))
@@ -152,90 +155,179 @@ export default function Chat() {
             }
             if (data.text) {
               fullText += data.text
-              setMessages(prev => {
-                const updated = [...prev]
+              setMessages((previous) => {
+                const updated = [...previous]
                 updated[updated.length - 1] = { role: 'assistant', content: fullText }
                 return updated
               })
             }
-          } catch {}
+          } catch {
+            // Ignore malformed chunks and keep streaming.
+          }
         }
       }
     } catch (error) {
-      const content = error instanceof Error ? error.message : 'AI service unavailable. Add your Anthropic API key to enable the chat.'
-      setMessages(prev => [...prev, { role: 'assistant', content }])
+      const content =
+        error instanceof Error ? error.message : 'AI service unavailable right now. Please try again in a moment.'
+      setMessages((previous) => [...previous, { role: 'assistant', content }])
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)]">
-      <div className="mb-4">
-        <h1 className="font-display text-4xl font-black text-white mb-2">AI CHAT</h1>
-        <p className="text-gray-400">Ask Artemis AI anything about the mission</p>
-      </div>
-
-      {isFallbackMode && (
-        <div className="mb-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
-          Fallback mode active. Live Gemini is unavailable right now, so Artemis AI is answering from the local mission knowledge base.
+    <div className="page">
+      <section className="page-header-split">
+        <div className="page-header">
+          <p className="section-label">Chat</p>
+          <h1 className="page-title">Mission assistant</h1>
+          <p className="page-copy">
+            Ask questions about Artemis II, the crew, mission phases, and how the current program compares with Apollo.
+          </p>
         </div>
-      )}
 
-      {(historyLoading || historyError) && (
-        <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${historyLoading ? 'border-artemis-blue/30 bg-artemis-blue/10 text-artemis-blue' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>
-          {historyLoading ? 'Loading previous chat history...' : historyError}
-        </div>
-      )}
-
-      {/* Suggested questions */}
-      <div className="flex gap-2 flex-wrap mb-4">
-        {SUGGESTED.map(q => (
-          <button key={q} onClick={() => sendMessage(q)} className="text-xs px-3 py-1.5 bg-gray-800 hover:bg-artemis-blue/20 hover:border-artemis-blue border border-gray-700 rounded-full text-gray-300 hover:text-artemis-blue transition-all">
-            {q}
-          </button>
-        ))}
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {msg.role === 'assistant' && (
-              <div className="w-8 h-8 rounded-full bg-artemis-blue/20 border border-artemis-blue/30 flex items-center justify-center flex-shrink-0 mt-1">
-                <Bot className="w-4 h-4 text-artemis-blue" />
-              </div>
-            )}
-            <div className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? 'bg-artemis-blue text-white rounded-tr-sm' : 'bg-space-900 border border-gray-800 text-gray-200 rounded-tl-sm'}`}>
-              {msg.content || <span className="animate-pulse text-gray-500">Thinking...</span>}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="card-plain p-6">
+            <p className="section-label">Model status</p>
+            <div className="mt-4 text-[28px] font-semibold tracking-[-0.02em] text-[color:var(--text)]">
+              {isFallbackMode ? 'Fallback' : 'Ready'}
             </div>
-            {msg.role === 'user' && (
-              <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center flex-shrink-0 mt-1">
-                <User className="w-4 h-4 text-gray-300" />
-              </div>
-            )}
+            <p className="mt-4 text-sm text-[color:var(--muted)]">
+              {isFallbackMode ? 'Local mission knowledge base in use.' : 'Streaming responses available.'}
+            </p>
           </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
+          <div className="card-plain p-6">
+            <p className="section-label">History</p>
+            <div className="mt-4 text-[28px] font-semibold tracking-[-0.02em] text-[color:var(--text)]">
+              {historyLoading ? 'Loading' : `${messages.length}`}
+            </div>
+            <p className="mt-4 text-sm text-[color:var(--muted)]">Visible messages in the current authenticated session.</p>
+          </div>
+        </div>
+      </section>
 
-      {/* Input */}
-      <div className="flex gap-3">
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && sendMessage()}
-          placeholder="Ask anything about Artemis II..."
-          className="flex-1 bg-space-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-artemis-blue transition-colors"
-        />
-        <button
-          onClick={() => sendMessage()}
-          disabled={loading || historyLoading || !input.trim()}
-          className="bg-artemis-blue hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-3 rounded-xl transition-colors"
-        >
-          <Send className="w-5 h-5" />
-        </button>
-      </div>
+      <section className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+        <div className="space-y-4">
+          {isFallbackMode && (
+            <div className="card border-amber-500/40 bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+              The live Gemini model is unavailable, so responses are coming from the local mission knowledge base.
+            </div>
+          )}
+
+          {(historyLoading || historyError) && (
+            <div
+              className={`card p-4 text-sm ${
+                historyLoading
+                  ? 'border-blue-600/30 bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300'
+                  : 'border-amber-500/40 bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200'
+              }`}
+            >
+              {historyLoading ? 'Loading previous messages...' : historyError}
+            </div>
+          )}
+
+          <div className="card p-6 md:p-8">
+            <div className="flex flex-col gap-3 border-b border-[color:var(--border)] pb-4 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-sm font-medium text-[color:var(--text)]">Conversation</p>
+                <p className="mt-1 text-sm text-[color:var(--muted)]">
+                  {historyLoading ? 'Loading history' : `${messages.length} messages`}
+                </p>
+              </div>
+              <div className="text-sm text-[color:var(--muted)]">
+                Scope: <span className="font-medium text-[color:var(--text)]">Mission, crew, spacecraft, history</span>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {SUGGESTED.map((question) => (
+                <button key={question} onClick={() => sendMessage(question)} className="pill-button">
+                  {question}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-6 max-h-[560px] overflow-y-auto rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-soft)] p-4">
+              <div className="space-y-4">
+                {messages.map((message, index) => (
+                  <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[80%] rounded-lg px-4 py-3 text-sm leading-7 ${
+                        message.role === 'user'
+                          ? 'bg-blue-600 text-white'
+                          : 'border border-[color:var(--border)] bg-[color:var(--surface-elevated)] text-[color:var(--text)]'
+                      }`}
+                    >
+                      {message.content || <span className="text-[color:var(--muted)]">Thinking...</span>}
+                    </div>
+                  </div>
+                ))}
+                <div ref={bottomRef} />
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <input
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => event.key === 'Enter' && sendMessage()}
+                placeholder="Ask a question about Artemis II"
+                className="input-field flex-1"
+              />
+              <button
+                type="button"
+                onClick={() => sendMessage()}
+                disabled={loading || historyLoading || !input.trim()}
+                className="button-primary w-11 px-0"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="card p-6">
+            <p className="section-label">Coverage</p>
+            <h2 className="section-title mt-2">What the assistant covers</h2>
+            <div className="mt-6 space-y-4">
+              {[
+                'Mission phases and timeline',
+                'Crew records and roles',
+                'Spacecraft and launch system details',
+                'Apollo and Artemis comparisons',
+              ].map((item) => (
+                <div key={item} className="flex items-start gap-3">
+                  <span className="mt-2 h-2 w-2 rounded-full bg-blue-600" />
+                  <span className="text-sm text-[color:var(--text)]">{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card p-6">
+            <p className="section-label">Prompt ideas</p>
+            <h2 className="section-title mt-2">Questions to try</h2>
+            <div className="mt-6 space-y-2">
+              {[
+                'What makes Artemis II historically important?',
+                'Which crew members are setting new records?',
+                'Why does the mission use a free-return trajectory?',
+                'What is happening in the current mission phase?',
+              ].map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => sendMessage(item)}
+                  className="w-full rounded-lg border border-[color:var(--border)] px-4 py-3 text-left text-sm text-[color:var(--text)] transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }
