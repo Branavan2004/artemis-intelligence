@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, Bot, User } from 'lucide-react'
+import { API_BASE_URL } from '../lib/api'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -35,11 +36,24 @@ export default function Chat() {
     setLoading(true)
 
     try {
-      const res = await fetch('http://localhost:4000/api/chat/stream', {
+      const token = localStorage.getItem('artemis_token')
+      if (!token) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: 'AI chat is connected to the backend, but this page still needs the upcoming login flow to send a real JWT. Auth is the next frontend step.'
+        }])
+        return
+      }
+
+      const res = await fetch(`${API_BASE_URL}/api/chat/stream`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer placeholder' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ message, history: messages }),
       })
+
+      if (!res.ok) {
+        throw new Error('Unable to reach the AI stream right now.')
+      }
 
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
@@ -55,6 +69,9 @@ export default function Chat() {
         for (const line of lines) {
           try {
             const data = JSON.parse(line.slice(6))
+            if (data.error) {
+              throw new Error(data.error)
+            }
             if (data.text) {
               fullText += data.text
               setMessages(prev => {
@@ -66,8 +83,9 @@ export default function Chat() {
           } catch {}
         }
       }
-    } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ AI service unavailable. Add your Anthropic API key to enable the chat.' }])
+    } catch (error) {
+      const content = error instanceof Error ? error.message : 'AI service unavailable. Add your Anthropic API key to enable the chat.'
+      setMessages(prev => [...prev, { role: 'assistant', content }])
     } finally {
       setLoading(false)
     }
