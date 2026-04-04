@@ -20,6 +20,7 @@ const MOON_POSITION_KM = new THREE.Vector3(330000, 18000, -215000)
 const SUN_POSITION = new THREE.Vector3(150000, 60000, 100000)
 const SUN_DIRECTION = SUN_POSITION.clone().normalize()
 const LAUNCH_TIME_MS = Date.UTC(2026, 3, 1, 18, 34, 0)
+const MISSION_DURATION_MS = 10 * 24 * 60 * 60 * 1000
 const MONO_FONT = '"SFMono-Regular", "SF Mono", "Cascadia Code", "Roboto Mono", "Courier New", monospace'
 const HUD_PANEL_BG = 'rgba(2, 8, 24, 0.88)'
 const HUD_PANEL_BORDER = '1px solid rgba(68, 136, 255, 0.22)'
@@ -60,8 +61,107 @@ const SLS_STATS = [
 
 type TrajectoryLine = THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial | THREE.LineDashedMaterial>
 
+const MAX_TRAJECTORY_DISTANCE_KM = FREE_RETURN_POINTS_KM.reduce((maxDistance, point) => {
+  return Math.max(maxDistance, point.length())
+}, 0)
+
+const MAX_TRAJECTORY_SCENE_DISTANCE = FREE_RETURN_POINTS_KM.reduce((maxDistance, point) => {
+  return Math.max(maxDistance, toScenePosition(point).length())
+}, 0)
+
+const MIN_ORION_SCENE_DISTANCE = EARTH_RADIUS_KM + 1400
+const FALLBACK_ORION_DISTANCE_KM = 380000
+const TRAJECTORY_PHASE_SPLIT = 0.56
+const TRAJECTORY_CONTINUITY_WINDOW = 120
+
 function toScenePosition(vector: THREE.Vector3) {
   return vector.clone().multiplyScalar(POSITION_SCALE)
+}
+
+function getApproxOrbitAngle() {
+  return (Date.now() / 1000 / 800000) * Math.PI * 2
+}
+
+function getResolvedDistanceFromEarthKm(distanceFromEarthKm: number, telemetryVector: THREE.Vector3 | null) {
+  if (Number.isFinite(distanceFromEarthKm) && distanceFromEarthKm > 0) {
+    return distanceFromEarthKm
+  }
+
+  if (telemetryVector && telemetryVector.lengthSq() > 1) {
+    return telemetryVector.length()
+  }
+
+  return FALLBACK_ORION_DISTANCE_KM
+}
+
+function getResolvedTelemetryVector(telemetryVector: THREE.Vector3 | null, distanceFromEarthKm: number) {
+  if (telemetryVector && telemetryVector.lengthSq() > 1) {
+    return telemetryVector.clone()
+  }
+
+  const fallbackDirection = new THREE.Vector3(
+    Math.cos(getApproxOrbitAngle()),
+    Math.sin(getApproxOrbitAngle()) * 0.08,
+    Math.sin(getApproxOrbitAngle()),
+  ).normalize()
+
+  return fallbackDirection.multiplyScalar(distanceFromEarthKm)
+}
+
+function getSceneDistanceFromEarth(distanceFromEarthKm: number) {
+  const clampedDistance = THREE.MathUtils.clamp(distanceFromEarthKm, 0, MAX_TRAJECTORY_DISTANCE_KM)
+  const progress = MAX_TRAJECTORY_DISTANCE_KM === 0 ? 0 : clampedDistance / MAX_TRAJECTORY_DISTANCE_KM
+
+  return THREE.MathUtils.lerp(MIN_ORION_SCENE_DISTANCE, MAX_TRAJECTORY_SCENE_DISTANCE, progress)
+}
+
+function getMissionProgress() {
+  return THREE.MathUtils.clamp((Date.now() - LAUNCH_TIME_MS) / MISSION_DURATION_MS, 0, 1)
+}
+
+function pickTrajectoryIndex(points: THREE.Vector3[], targetSceneDistance: number, previousIndex: number | null) {
+  if (points.length === 0) {
+    return 0
+  }
+
+  const evaluateIndex = (index: number) => {
+    return Math.abs(points[index].length() - targetSceneDistance)
+  }
+
+  if (previousIndex !== null) {
+    const start = Math.max(0, previousIndex - TRAJECTORY_CONTINUITY_WINDOW)
+    const end = Math.min(points.length - 1, previousIndex + TRAJECTORY_CONTINUITY_WINDOW)
+
+    let bestIndex = previousIndex
+    let bestScore = Number.POSITIVE_INFINITY
+
+    for (let index = start; index <= end; index += 1) {
+      const score = evaluateIndex(index)
+      if (score < bestScore) {
+        bestScore = score
+        bestIndex = index
+      }
+    }
+
+    return bestIndex
+  }
+
+  const phaseSplitIndex = Math.floor(points.length * TRAJECTORY_PHASE_SPLIT)
+  const searchStart = getMissionProgress() >= TRAJECTORY_PHASE_SPLIT ? phaseSplitIndex : 0
+  const searchEnd = getMissionProgress() >= TRAJECTORY_PHASE_SPLIT ? points.length - 1 : phaseSplitIndex
+
+  let bestIndex = searchStart
+  let bestScore = Number.POSITIVE_INFINITY
+
+  for (let index = searchStart; index <= searchEnd; index += 1) {
+    const score = evaluateIndex(index)
+    if (score < bestScore) {
+      bestScore = score
+      bestIndex = index
+    }
+  }
+
+  return bestIndex
 }
 
 function drawRoundedRect(
@@ -313,26 +413,18 @@ function formatMet(timestampMs: number) {
   return [days, hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':')
 }
 
-function buildTrajectoryCurve(orionPositionKm: THREE.Vector3) {
+function buildTrajectoryCurve(distanceFromEarthKm: number, previousIndex: number | null = null) {
   const curve = new THREE.CatmullRomCurve3(FREE_RETURN_POINTS_KM.map(toScenePosition))
   const points = curve.getPoints(600)
-  const orionScenePosition = toScenePosition(orionPositionKm)
-
-  let closestIndex = 0
-  let closestDistance = Number.POSITIVE_INFINITY
-
-  points.forEach((point, index) => {
-    const distance = point.distanceToSquared(orionScenePosition)
-    if (distance < closestDistance) {
-      closestDistance = distance
-      closestIndex = index
-    }
-  })
+  const targetSceneDistance = getSceneDistanceFromEarth(distanceFromEarthKm)
+  const closestIndex = pickTrajectoryIndex(points, targetSceneDistance, previousIndex)
+  const orionScenePosition = points[closestIndex]?.clone() ?? new THREE.Vector3(targetSceneDistance, 0, 0)
 
   return {
     curve,
     points,
     closestIndex,
+    orionScenePosition,
   }
 }
 
@@ -514,7 +606,7 @@ export default function TrajectoryMap3D({
   const controlsRef = useRef<OrbitControls | null>(null)
   const animationFrameRef = useRef<number | null>(null)
   const resizeHandlerRef = useRef<(() => void) | null>(null)
-  const rebuildTrajectoryRef = useRef<((orionPositionKm: THREE.Vector3) => void) | null>(null)
+  const rebuildTrajectoryRef = useRef<((distanceFromEarthKm: number) => THREE.Vector3 | null) | null>(null)
 
   const earthGroupRef = useRef<THREE.Group | null>(null)
   const earthMeshRef = useRef<THREE.Mesh | null>(null)
@@ -536,6 +628,7 @@ export default function TrajectoryMap3D({
   const returnLineRef = useRef<TrajectoryLine | null>(null)
   const curveRef = useRef<THREE.CatmullRomCurve3 | null>(null)
   const trajectoryTargetsRef = useRef<THREE.Object3D[]>([])
+  const orionTrajectoryIndexRef = useRef<number | null>(null)
 
   const raycasterRef = useRef(new THREE.Raycaster())
   const autoRotateRef = useRef(true)
@@ -550,9 +643,19 @@ export default function TrajectoryMap3D({
   const [showRocketPanel, setShowRocketPanel] = useState(false)
   const [metClock, setMetClock] = useState(() => formatMet(Date.now() - LAUNCH_TIME_MS))
 
-  const resolvedPosition = useMemo(
-    () => (position ? new THREE.Vector3(position.x, position.y, position.z) : DEFAULT_ORION_POSITION.clone()),
+  const telemetryVector = useMemo(
+    () => (position ? new THREE.Vector3(position.x, position.y, position.z) : null),
     [position],
+  )
+
+  const resolvedDistanceFromEarthKm = useMemo(
+    () => getResolvedDistanceFromEarthKm(distanceFromEarthKm, telemetryVector),
+    [distanceFromEarthKm, telemetryVector],
+  )
+
+  const resolvedPosition = useMemo(
+    () => getResolvedTelemetryVector(telemetryVector, resolvedDistanceFromEarthKm),
+    [resolvedDistanceFromEarthKm, telemetryVector],
   )
 
   const closeAllPanels = () => {
@@ -940,8 +1043,11 @@ export default function TrajectoryMap3D({
     scene.add(moonLabel)
     moonLabelRef.current = moonLabel
 
+    const initialTrajectoryState = buildTrajectoryCurve(resolvedDistanceFromEarthKm)
+    orionTrajectoryIndexRef.current = initialTrajectoryState.closestIndex
+
     const orionGroup = new THREE.Group()
-    orionGroup.position.copy(toScenePosition(resolvedPosition))
+    orionGroup.position.copy(initialTrajectoryState.orionScenePosition)
     scene.add(orionGroup)
     orionGroupRef.current = orionGroup
 
@@ -974,11 +1080,11 @@ export default function TrajectoryMap3D({
 
     const orionLabel = makeLabel(
       'ORION',
-      `${Math.round(distanceFromEarthKm).toLocaleString()} KM FROM EARTH`,
+      `${Math.round(resolvedDistanceFromEarthKm).toLocaleString()} KM FROM EARTH`,
       '#ffffff',
       [9000, 2500, 1],
     )
-    orionLabel.position.copy(toScenePosition(resolvedPosition).add(new THREE.Vector3(0, 2800, 0)))
+    orionLabel.position.copy(initialTrajectoryState.orionScenePosition.clone().add(new THREE.Vector3(0, 2800, 0)))
     orionLabel.renderOrder = 31
     const orionLabelMaterial = orionLabel.material as THREE.SpriteMaterial
     orionLabelMaterial.depthTest = false
@@ -1025,12 +1131,16 @@ export default function TrajectoryMap3D({
       disposeMaterial(line.material)
     }
 
-    rebuildTrajectoryRef.current = (orionPositionKm) => {
+    rebuildTrajectoryRef.current = (nextDistanceFromEarthKm) => {
       removeTrajectoryLine(outboundLineRef.current)
       removeTrajectoryLine(returnLineRef.current)
 
-      const { curve, points, closestIndex } = buildTrajectoryCurve(orionPositionKm)
+      const { curve, points, closestIndex, orionScenePosition } = buildTrajectoryCurve(
+        nextDistanceFromEarthKm,
+        orionTrajectoryIndexRef.current,
+      )
       curveRef.current = curve
+      orionTrajectoryIndexRef.current = closestIndex
 
       if (pathMarkerRef.current) {
         pathMarkerRef.current.position.copy(curve.getPoint(0.5))
@@ -1065,9 +1175,11 @@ export default function TrajectoryMap3D({
       trajectoryTargetsRef.current = [outboundLine, returnLine]
 
       scene.add(outboundLine, returnLine)
+
+      return orionScenePosition
     }
 
-    rebuildTrajectoryRef.current(resolvedPosition)
+    rebuildTrajectoryRef.current(resolvedDistanceFromEarthKm)
 
     const handleCanvasClick = (event: MouseEvent) => {
       if (!rendererRef.current || !cameraRef.current) {
@@ -1191,11 +1303,12 @@ export default function TrajectoryMap3D({
       trajectoryTargetsRef.current = []
       rebuildTrajectoryRef.current = null
       resizeHandlerRef.current = null
+      orionTrajectoryIndexRef.current = null
     }
   }, [])
 
   useEffect(() => {
-    const scenePosition = toScenePosition(resolvedPosition)
+    const scenePosition = rebuildTrajectoryRef.current?.(resolvedDistanceFromEarthKm) ?? toScenePosition(resolvedPosition)
 
     if (orionGroupRef.current) {
       orionGroupRef.current.position.copy(scenePosition)
@@ -1205,8 +1318,7 @@ export default function TrajectoryMap3D({
       orionLabelRef.current.position.copy(scenePosition.clone().add(new THREE.Vector3(0, 2800, 0)))
     }
 
-    rebuildTrajectoryRef.current?.(resolvedPosition)
-  }, [resolvedPosition])
+  }, [resolvedDistanceFromEarthKm, resolvedPosition])
 
   useEffect(() => {
     if (!orionLabelRef.current) {
@@ -1216,16 +1328,16 @@ export default function TrajectoryMap3D({
     updateLabel(
       orionLabelRef.current,
       'ORION',
-      `${Math.round(distanceFromEarthKm).toLocaleString()} KM FROM EARTH`,
+      `${Math.round(resolvedDistanceFromEarthKm).toLocaleString()} KM FROM EARTH`,
       '#ffffff',
     )
-  }, [distanceFromEarthKm])
+  }, [resolvedDistanceFromEarthKm])
 
   useEffect(() => {
     resizeHandlerRef.current?.()
   }, [heightPx])
 
-  const lightTimeSeconds = distanceFromEarthKm > 0 ? (distanceFromEarthKm / 299792).toFixed(1) : '0.0'
+  const lightTimeSeconds = resolvedDistanceFromEarthKm > 0 ? (resolvedDistanceFromEarthKm / 299792).toFixed(1) : '0.0'
 
   return (
     <div

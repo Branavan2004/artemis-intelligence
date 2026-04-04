@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Pause, Play } from 'lucide-react'
 import DSNTracker from '../components/DSNTracker'
+import SplashdownMonitor from '../components/SplashdownMonitor'
 import TrajectoryMap3D from '../components/TrajectoryMap3D'
 import { type TelemetryPayload, useTelemetry } from '../hooks/useTelemetry'
 import { api } from '../lib/api'
@@ -327,6 +328,16 @@ export default function Replay() {
                   speedKmS={telemetry?.trajectory?.speedKmS ?? 0}
                   heightPx={620}
                 />
+              </div>
+            </div>
+
+            <div className="card p-6 md:p-7">
+              <div>
+                <p className="section-label">Recovery zone weather · Pacific Ocean</p>
+                <h2 className="section-title mt-2">Splashdown recovery conditions off San Diego</h2>
+              </div>
+              <div className="mt-6">
+                <SplashdownMonitor />
               </div>
             </div>
           </div>

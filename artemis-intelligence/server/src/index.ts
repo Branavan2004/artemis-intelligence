@@ -11,6 +11,7 @@ import { newsRouter } from './routes/news';
 import { chatRouter } from './routes/chat';
 import { telemetryRoutes } from './routes/telemetry';
 import dsnRoutes from './routes/dsn';
+import splashdownWeatherRoutes from './routes/splashdownWeather';
 import { errorHandler } from './middleware/errorHandler';
 import { initRedis } from './services/redis';
 import { getMissionUpdate } from './constants/mission';
@@ -43,6 +44,7 @@ app.use('/api/news', newsRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/telemetry', telemetryRoutes);
 app.use('/api/dsn', dsnRoutes);
+app.use('/api/splashdown-weather', splashdownWeatherRoutes);
 
 app.use(errorHandler);
 
