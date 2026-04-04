@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Pause, Play } from 'lucide-react'
 import DSNTracker from '../components/DSNTracker'
+import TrajectoryMap3D from '../components/TrajectoryMap3D'
 import { type TelemetryPayload, useTelemetry } from '../hooks/useTelemetry'
 import { api } from '../lib/api'
 import { getMissionHoursElapsed } from '../lib/mission'
@@ -174,137 +175,158 @@ export default function Replay() {
           ))}
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.45fr_0.55fr]">
-          <div className="card overflow-hidden">
-            <div className="flex flex-col gap-3 border-b border-[color:var(--border)] px-6 py-5 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="section-label">Trajectory</p>
-                <h2 className="section-title mt-2">Earth to Moon path</h2>
-              </div>
-              <div className="text-sm text-[color:var(--muted)]">
-                {upcomingEvent ? `Next milestone: ${upcomingEvent.title}` : 'Mission sequence complete'}
-              </div>
-            </div>
-
-            <div className="border-b border-[color:var(--border)] bg-[#0F1117] p-4 md:p-6">
-              <svg viewBox="0 0 720 280" className="w-full">
-                {[120, 240, 360, 480, 600].map((x) => (
-                  <line key={`v-${x}`} x1={x} y1="24" x2={x} y2="252" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-                ))}
-                {[80, 140, 200].map((y) => (
-                  <line key={`h-${y}`} x1="32" y1={y} x2="688" y2={y} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-                ))}
-
-                <circle cx="110" cy="190" r="30" fill="#FFFFFF" fillOpacity="0.12" />
-                <circle cx="110" cy="190" r="18" fill="#FFFFFF" />
-                <text x="110" y="236" textAnchor="middle" className="fill-white text-[12px]">
-                  Earth
-                </text>
-
-                <circle cx="594" cy="96" r="22" fill="#FFFFFF" fillOpacity="0.12" />
-                <circle cx="594" cy="96" r="14" fill="#FFFFFF" />
-                <text x="594" y="136" textAnchor="middle" className="fill-white text-[12px]">
-                  Moon
-                </text>
-
-                <path
-                  d="M 110 190 Q 340 12 594 96"
-                  fill="none"
-                  stroke="#FFFFFF"
-                  strokeWidth="2"
-                  strokeDasharray="8 8"
-                  strokeLinecap="round"
-                  opacity="0.8"
-                />
-                <path
-                  d="M 594 96 Q 400 286 152 224"
-                  fill="none"
-                  stroke="#FFFFFF"
-                  strokeWidth="2"
-                  strokeDasharray="8 8"
-                  strokeLinecap="round"
-                  opacity="0.8"
-                />
-
-                <circle cx="278" cy="79" r="4" fill="#FFFFFF" />
-                <text x="278" y="60" textAnchor="middle" className="fill-white text-[11px]">
-                  TLI
-                </text>
-
-                <circle cx="560" cy="101" r="4" fill="#FFFFFF" />
-                <text x="560" y="76" textAnchor="middle" className="fill-white text-[11px]">
-                  Flyby
-                </text>
-
-                <circle cx="152" cy="224" r="6" fill="#FFFFFF" />
-                <text x="152" y="248" textAnchor="middle" className="fill-white text-[11px]">
-                  Splashdown
-                </text>
-
-                <circle cx={missionPoint.x} cy={missionPoint.y} r="4" fill="#FFFFFF" />
-                <text x={missionPoint.x + 10} y={missionPoint.y - 10} className="fill-white text-[12px]">
-                  Orion
-                </text>
-              </svg>
-            </div>
-
-            <div className="space-y-5 px-6 py-5">
-              <div className="grid gap-4 md:grid-cols-[auto_1fr_auto] md:items-center">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isLiveMode) setIsLiveMode(false)
-                      setIsPlaying((current) => !current)
-                    }}
-                    className="button-secondary w-10 px-0"
-                  >
-                    {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsLiveMode(true)
-                      setIsPlaying(false)
-                      setReplayHour(clampMissionHour(getMissionHoursElapsed(mission.launchDate)))
-                    }}
-                    className="button-secondary"
-                  >
-                    Jump to live
-                  </button>
+        <div className="grid gap-6 xl:grid-cols-[1.55fr_0.45fr]">
+          <div className="space-y-6">
+            <div className="card overflow-hidden">
+              <div className="flex flex-col gap-3 border-b border-[color:var(--border)] px-6 py-5 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p className="section-label">Trajectory</p>
+                  <h2 className="section-title mt-2">Earth to Moon path</h2>
                 </div>
-
-                <input
-                  type="range"
-                  min={0}
-                  max={240}
-                  step={0.5}
-                  value={replayHour}
-                  onChange={(event) => {
-                    setIsLiveMode(false)
-                    setIsPlaying(false)
-                    setReplayHour(Number(event.target.value))
-                  }}
-                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-blue-600 dark:bg-slate-800"
-                />
-
-                <div className="text-right">
-                  <div className="font-mono text-sm text-[color:var(--text)]">{formatReplayClock(replayHour)}</div>
-                  <div className="text-xs text-[color:var(--muted)]">{isLiveMode ? 'Live mode' : 'Replay mode'}</div>
+                <div className="text-sm text-[color:var(--muted)]">
+                  {upcomingEvent ? `Next milestone: ${upcomingEvent.title}` : 'Mission sequence complete'}
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-3">
-                {[
-                  ['Distance', `${distanceFromEarth.toLocaleString()} km`],
-                  ['Velocity', `${velocity} km/s`],
-                  ['Trajectory', getTrajectoryLabel(replayHour)],
-                ].map(([label, value]) => (
-                  <div key={label} className="card-muted px-4 py-3">
-                    <p className="eyebrow">{label}</p>
-                    <p className="mt-1 font-mono text-sm text-[color:var(--text)]">{value}</p>
+              <div className="border-b border-[color:var(--border)] bg-[#0F1117] p-4 md:p-6">
+                <svg viewBox="0 0 720 280" className="w-full">
+                  {[120, 240, 360, 480, 600].map((x) => (
+                    <line key={`v-${x}`} x1={x} y1="24" x2={x} y2="252" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+                  ))}
+                  {[80, 140, 200].map((y) => (
+                    <line key={`h-${y}`} x1="32" y1={y} x2="688" y2={y} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+                  ))}
+
+                  <circle cx="110" cy="190" r="30" fill="#FFFFFF" fillOpacity="0.12" />
+                  <circle cx="110" cy="190" r="18" fill="#FFFFFF" />
+                  <text x="110" y="236" textAnchor="middle" className="fill-white text-[12px]">
+                    Earth
+                  </text>
+
+                  <circle cx="594" cy="96" r="22" fill="#FFFFFF" fillOpacity="0.12" />
+                  <circle cx="594" cy="96" r="14" fill="#FFFFFF" />
+                  <text x="594" y="136" textAnchor="middle" className="fill-white text-[12px]">
+                    Moon
+                  </text>
+
+                  <path
+                    d="M 110 190 Q 340 12 594 96"
+                    fill="none"
+                    stroke="#FFFFFF"
+                    strokeWidth="2"
+                    strokeDasharray="8 8"
+                    strokeLinecap="round"
+                    opacity="0.8"
+                  />
+                  <path
+                    d="M 594 96 Q 400 286 152 224"
+                    fill="none"
+                    stroke="#FFFFFF"
+                    strokeWidth="2"
+                    strokeDasharray="8 8"
+                    strokeLinecap="round"
+                    opacity="0.8"
+                  />
+
+                  <circle cx="278" cy="79" r="4" fill="#FFFFFF" />
+                  <text x="278" y="60" textAnchor="middle" className="fill-white text-[11px]">
+                    TLI
+                  </text>
+
+                  <circle cx="560" cy="101" r="4" fill="#FFFFFF" />
+                  <text x="560" y="76" textAnchor="middle" className="fill-white text-[11px]">
+                    Flyby
+                  </text>
+
+                  <circle cx="152" cy="224" r="6" fill="#FFFFFF" />
+                  <text x="152" y="248" textAnchor="middle" className="fill-white text-[11px]">
+                    Splashdown
+                  </text>
+
+                  <circle cx={missionPoint.x} cy={missionPoint.y} r="4" fill="#FFFFFF" />
+                  <text x={missionPoint.x + 10} y={missionPoint.y - 10} className="fill-white text-[12px]">
+                    Orion
+                  </text>
+                </svg>
+              </div>
+
+              <div className="space-y-5 px-6 py-5">
+                <div className="grid gap-4 md:grid-cols-[auto_1fr_auto] md:items-center">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isLiveMode) setIsLiveMode(false)
+                        setIsPlaying((current) => !current)
+                      }}
+                      className="button-secondary w-10 px-0"
+                    >
+                      {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsLiveMode(true)
+                        setIsPlaying(false)
+                        setReplayHour(clampMissionHour(getMissionHoursElapsed(mission.launchDate)))
+                      }}
+                      className="button-secondary"
+                    >
+                      Jump to live
+                    </button>
                   </div>
-                ))}
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={240}
+                    step={0.5}
+                    value={replayHour}
+                    onChange={(event) => {
+                      setIsLiveMode(false)
+                      setIsPlaying(false)
+                      setReplayHour(Number(event.target.value))
+                    }}
+                    className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-blue-600 dark:bg-slate-800"
+                  />
+
+                  <div className="text-right">
+                    <div className="font-mono text-sm text-[color:var(--text)]">{formatReplayClock(replayHour)}</div>
+                    <div className="text-xs text-[color:var(--muted)]">{isLiveMode ? 'Live mode' : 'Replay mode'}</div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {[
+                    ['Distance', `${distanceFromEarth.toLocaleString()} km`],
+                    ['Velocity', `${velocity} km/s`],
+                    ['Trajectory', getTrajectoryLabel(replayHour)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="card-muted px-4 py-3">
+                      <p className="eyebrow">{label}</p>
+                      <p className="mt-1 font-mono text-sm text-[color:var(--text)]">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="card p-6 md:p-7">
+              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p className="section-label">3D trajectory map</p>
+                  <h2 className="section-title mt-2">Real-time Orion position from JPL Horizons</h2>
+                </div>
+                <p className="text-sm text-[color:var(--muted)]">JPL Horizons · updates every 5 min</p>
+              </div>
+              <div className="mt-6">
+                <TrajectoryMap3D
+                  position={telemetry?.trajectory?.positionVector ?? null}
+                  distanceFromEarthKm={telemetry?.trajectory?.distanceFromEarthKm ?? 0}
+                  distanceFromMoonKm={telemetry?.trajectory?.distanceFromMoonKm ?? 0}
+                  speedKmS={telemetry?.trajectory?.speedKmS ?? 0}
+                  heightPx={620}
+                />
               </div>
             </div>
           </div>
