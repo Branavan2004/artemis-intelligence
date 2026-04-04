@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Pause, Play } from 'lucide-react'
+import DSNTracker from '../components/DSNTracker'
+import { type TelemetryPayload, useTelemetry } from '../hooks/useTelemetry'
 import { api } from '../lib/api'
 import { getMissionHoursElapsed } from '../lib/mission'
 import {
@@ -30,6 +32,8 @@ interface MissionData {
   spacecraft: { name: string; rocket: string; launchSite: string; splashdownTarget: string }
 }
 
+type SpaceWeatherRisk = 'nominal' | 'elevated' | 'severe'
+
 const fadeIn = {
   hidden: { opacity: 0, y: 8 },
   show: { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' } },
@@ -41,11 +45,27 @@ function formatReplayClock(hour: number) {
   return `T+ ${wholeHours}h ${minutes}m`
 }
 
+function getLiveSourceLabel(telemetry: TelemetryPayload | null) {
+  return [telemetry?.trajectory?.source, telemetry?.spaceWeather?.source].filter(Boolean).join(' + ')
+}
+
+function getRiskTone(riskLevel: SpaceWeatherRisk) {
+  switch (riskLevel) {
+    case 'severe':
+      return 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300'
+    case 'elevated':
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
+    default:
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+  }
+}
+
 export default function Replay() {
   const [mission, setMission] = useState<MissionData | null>(null)
   const [replayHour, setReplayHour] = useState(0)
   const [isLiveMode, setIsLiveMode] = useState(true)
   const [isPlaying, setIsPlaying] = useState(false)
+  const { data: telemetry, loading: telemetryLoading, error: telemetryError } = useTelemetry()
 
   useEffect(() => {
     api.get('/api/mission').then((response) => setMission(response.data))
@@ -96,6 +116,10 @@ export default function Replay() {
   const upcomingEvent = getUpcomingReplayEvent(replayHour)
   const replayProgress = getReplayProgress(replayHour)
   const phaseProgress = getPhaseCompletion(activePhase, replayHour)
+  const liveTrajectory = telemetry?.trajectory
+  const liveSpaceWeather = telemetry?.spaceWeather
+  const liveSourceLabel = getLiveSourceLabel(telemetry)
+  const latestFlareClass = liveSpaceWeather?.solarFlares[0]?.classType || 'None'
 
   return (
     <div className="page">
@@ -289,7 +313,75 @@ export default function Replay() {
             <div className="card p-6">
               <p className="section-label">Telemetry</p>
               <h2 className="section-title mt-2">Current snapshot</h2>
-              <div className="mt-6 divide-y divide-[color:var(--border)]">
+              <div className="mt-6 card-muted p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="eyebrow">Live telemetry</p>
+                    <p className="mt-1 text-sm text-[color:var(--muted)]">
+                      {telemetryLoading
+                        ? 'Fetching live data...'
+                        : telemetryError
+                          ? 'Live data unavailable — using simulation'
+                          : 'Live trajectory and space weather data synced for the Replay view.'}
+                    </p>
+                  </div>
+                  {!telemetryLoading && !telemetryError && liveSourceLabel ? (
+                    <span className="inline-flex items-center rounded-full border border-[color:var(--border)] px-3 py-1 text-xs font-medium text-[color:var(--text)]">
+                      {liveSourceLabel}
+                    </span>
+                  ) : null}
+                </div>
+
+                {!telemetryLoading && !telemetryError ? (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--bg)] p-3">
+                      <p className="eyebrow">Distance from Earth</p>
+                      <p className="mt-1 font-mono text-sm text-[color:var(--text)]">
+                        {liveTrajectory ? `${liveTrajectory.distanceFromEarthKm.toLocaleString()} km` : '—'}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--bg)] p-3">
+                      <p className="eyebrow">Distance from Moon</p>
+                      <p className="mt-1 font-mono text-sm text-[color:var(--text)]">
+                        {liveTrajectory ? `${liveTrajectory.distanceFromMoonKm.toLocaleString()} km` : '—'}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--bg)] p-3">
+                      <p className="eyebrow">Current speed</p>
+                      <p className="mt-1 font-mono text-sm text-[color:var(--text)]">
+                        {liveTrajectory ? `${liveTrajectory.speedKmS.toLocaleString()} km/s` : '—'}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--bg)] p-3">
+                      <p className="eyebrow">Radiation risk</p>
+                      {liveSpaceWeather ? (
+                        <span
+                          className={`mt-2 inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium capitalize ${getRiskTone(liveSpaceWeather.riskLevel)}`}
+                        >
+                          {liveSpaceWeather.riskLevel}
+                        </span>
+                      ) : (
+                        <p className="mt-1 font-mono text-sm text-[color:var(--text)]">—</p>
+                      )}
+                    </div>
+                    <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--bg)] p-3">
+                      <p className="eyebrow">Solar flares (72h)</p>
+                      <p className="mt-1 font-mono text-sm text-[color:var(--text)]">
+                        {liveSpaceWeather ? liveSpaceWeather.solarFlares.length : 0}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--bg)] p-3">
+                      <p className="eyebrow">Latest flare class</p>
+                      <p className="mt-1 font-mono text-sm text-[color:var(--text)]">{latestFlareClass}</p>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-6">
+                <p className="eyebrow">Replay simulation</p>
+              </div>
+              <div className="mt-3 divide-y divide-[color:var(--border)]">
                 {[
                   ['Mode', isLiveMode ? 'Live' : 'Replay'],
                   ['Selected phase', activePhase.name],
@@ -327,6 +419,17 @@ export default function Replay() {
             </div>
           </div>
         </div>
+      </motion.section>
+
+      <motion.section initial="hidden" animate="show" variants={fadeIn} className="space-y-4">
+        <div className="page-header">
+          <p className="section-label">Deep Space Network</p>
+          <h2 className="section-title">Live antenna tracker</h2>
+          <p className="section-copy">
+            Monitor the live DSN handoff in a dedicated full-width tracker and see which ground station is carrying the Orion link right now.
+          </p>
+        </div>
+        <DSNTracker />
       </motion.section>
 
       <motion.section initial="hidden" animate="show" variants={fadeIn} className="grid gap-6 lg:grid-cols-[0.72fr_1.28fr]">
