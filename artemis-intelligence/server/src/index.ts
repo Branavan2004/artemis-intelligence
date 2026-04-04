@@ -9,6 +9,8 @@ import { authRouter } from './routes/auth';
 import { missionRouter } from './routes/mission';
 import { newsRouter } from './routes/news';
 import { chatRouter } from './routes/chat';
+import { telemetryRoutes } from './routes/telemetry';
+import dsnRoutes from './routes/dsn';
 import { errorHandler } from './middleware/errorHandler';
 import { initRedis } from './services/redis';
 import { getMissionUpdate } from './constants/mission';
@@ -39,6 +41,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/mission', missionRouter);
 app.use('/api/news', newsRouter);
 app.use('/api/chat', chatRouter);
+app.use('/api/telemetry', telemetryRoutes);
+app.use('/api/dsn', dsnRoutes);
 
 app.use(errorHandler);
 
