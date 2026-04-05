@@ -31,7 +31,7 @@ describe('CrewActivityFeed', () => {
   it('shows UPCOMING section when there are future events', () => {
     // At MET 000:00:01 almost everything is upcoming
     render(<CrewActivityFeed metElapsed="000:00:01" />)
-    expect(screen.getByText(/UPCOMING/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/UPCOMING/i).length).toBeGreaterThan(0)
   })
 
   it('shows RECENT section when there are past events', () => {
@@ -69,18 +69,19 @@ describe('CrewActivityFeed', () => {
     render(<CrewActivityFeed metElapsed="083:42:16" />)
     const toggleBtn = screen.getByText(/AUTO/i)
     fireEvent.click(toggleBtn)
-    expect(screen.getByText(/MANUAL/i)).toBeInTheDocument()
+    expect(screen.getByText(/^MANUAL$/)).toBeInTheDocument()
   })
 
   it('clicking an entry row expands its detail', () => {
     render(<CrewActivityFeed metElapsed="083:42:16" />)
-    // Find the first button (entry row) in RECENT section
-    const buttons = document.querySelectorAll('button')
-    // Find a button that is not the AUTO/MANUAL toggle
-    const entryBtn = Array.from(buttons).find((b) => b.style.display === 'grid')
+    const entryBtn = screen
+      .getByText(/Liftoff from Launch Complex 39B/i)
+      .closest('button')
+
+    expect(entryBtn).toBeTruthy()
+
     if (entryBtn) {
       fireEvent.click(entryBtn)
-      // After click, detail text should appear — find any detail text from MISSION_LOG
       expect(document.body.textContent).toContain('SLS ignition')
     }
   })

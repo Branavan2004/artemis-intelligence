@@ -3,23 +3,51 @@ import { vi } from 'vitest'
 
 // ── scrollTo & pointer capture — jsdom stubs ─────────────────────────────────
 window.HTMLElement.prototype.scrollTo = vi.fn() as typeof window.HTMLElement.prototype.scrollTo
+window.HTMLElement.prototype.scrollIntoView = vi.fn() as typeof window.HTMLElement.prototype.scrollIntoView
 window.HTMLElement.prototype.setPointerCapture = vi.fn() as typeof window.HTMLElement.prototype.setPointerCapture
+window.HTMLElement.prototype.hasPointerCapture = vi.fn(() => true) as typeof window.HTMLElement.prototype.hasPointerCapture
 window.HTMLElement.prototype.releasePointerCapture = vi.fn() as typeof window.HTMLElement.prototype.releasePointerCapture
+
+// ── Canvas API — minimal 2D context for texture/text sprite helpers ─────────
+const mockCanvasGradient = {
+  addColorStop: vi.fn(),
+}
+
+const mockCanvasContext = {
+  createRadialGradient: vi.fn(() => mockCanvasGradient),
+  clearRect: vi.fn(),
+  beginPath: vi.fn(),
+  arc: vi.fn(),
+  fill: vi.fn(),
+  fillText: vi.fn(),
+  fillStyle: '',
+  font: '',
+  globalAlpha: 1,
+  textAlign: 'left' as CanvasTextAlign,
+}
+
+HTMLCanvasElement.prototype.getContext = vi.fn(
+  (contextId: string) => (contextId === '2d' ? mockCanvasContext : null),
+) as typeof HTMLCanvasElement.prototype.getContext
 
 // ── Mock rAF ──────────────────────────────────────────────────────────────────
 window.requestAnimationFrame = vi.fn((cb) => setTimeout(cb, 16)) as unknown as typeof requestAnimationFrame
 window.cancelAnimationFrame  = vi.fn((id) => clearTimeout(id))  as unknown as typeof cancelAnimationFrame
 
 // ── Mock ResizeObserver ───────────────────────────────────────────────────────
-window.ResizeObserver = vi.fn().mockImplementation(() => ({
-  observe:    vi.fn(),
-  unobserve:  vi.fn(),
-  disconnect: vi.fn(),
-})) as unknown as typeof ResizeObserver
+window.ResizeObserver = vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+  this.observe = vi.fn()
+  this.unobserve = vi.fn()
+  this.disconnect = vi.fn()
+}) as unknown as typeof ResizeObserver
 
 // ── Mock Three.js — all classes must use mockImplementation so `new` works ───
 vi.mock('three', () => {
   const mockDomElement = document.createElement('canvas')
+  const mockCtor = (factory: () => Record<string, unknown>) =>
+    vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+      Object.assign(this, factory())
+    })
 
   // ── Math / value types ──────────────────────────────────────────────────────
   const Vector3 = vi.fn().mockImplementation(function (this: Record<string, unknown>, x = 0, y = 0, z = 0) {
@@ -50,18 +78,18 @@ vi.mock('three', () => {
     setAttribute: vi.fn(),
     setFromPoints: vi.fn(),
   })
-  const SphereGeometry    = vi.fn().mockImplementation(mkGeo)
-  const RingGeometry      = vi.fn().mockImplementation(mkGeo)
-  const BufferGeometry    = vi.fn().mockImplementation(mkGeo)
+  const SphereGeometry    = mockCtor(mkGeo)
+  const RingGeometry      = mockCtor(mkGeo)
+  const BufferGeometry    = mockCtor(mkGeo)
 
   // ── Materials ───────────────────────────────────────────────────────────────
   const mkMat = () => ({ needsUpdate: false, map: null, opacity: 0.35, color: 0xffffff })
-  const MeshPhongMaterial  = vi.fn().mockImplementation(mkMat)
-  const MeshBasicMaterial  = vi.fn().mockImplementation(mkMat)
-  const PointsMaterial     = vi.fn().mockImplementation(mkMat)
-  const LineBasicMaterial  = vi.fn().mockImplementation(mkMat)
-  const LineDashedMaterial = vi.fn().mockImplementation(mkMat)
-  const SpriteMaterial     = vi.fn().mockImplementation(() => ({ map: null, transparent: true, depthWrite: false }))
+  const MeshPhongMaterial  = mockCtor(mkMat)
+  const MeshBasicMaterial  = mockCtor(mkMat)
+  const PointsMaterial     = mockCtor(mkMat)
+  const LineBasicMaterial  = mockCtor(mkMat)
+  const LineDashedMaterial = mockCtor(mkMat)
+  const SpriteMaterial     = mockCtor(() => ({ map: null, transparent: true, depthWrite: false }))
 
   // ── 3D objects ──────────────────────────────────────────────────────────────
   const mkPos = () => ({ set: vi.fn(), copy: vi.fn(), x: 0, y: 0, z: 0 })
@@ -73,21 +101,21 @@ vi.mock('three', () => {
     geometry:   { setFromPoints: vi.fn(), setAttribute: vi.fn() },
   })
 
-  const Mesh   = vi.fn().mockImplementation(mkObj)
-  const Points = vi.fn().mockImplementation(mkObj)
-  const Group  = vi.fn().mockImplementation(() => ({ ...mkObj(), add: vi.fn() }))
-  const Line   = vi.fn().mockImplementation(() => ({ ...mkObj(), computeLineDistances: vi.fn() }))
+  const Mesh   = mockCtor(mkObj)
+  const Points = mockCtor(mkObj)
+  const Group  = mockCtor(() => ({ ...mkObj(), add: vi.fn() }))
+  const Line   = mockCtor(() => ({ ...mkObj(), computeLineDistances: vi.fn() }))
 
-  const Sprite = vi.fn().mockImplementation(() => ({
+  const Sprite = mockCtor(() => ({
     scale:      { set: vi.fn(), setScalar: vi.fn() },
     position:   mkPos(),
     quaternion: { copy: vi.fn() },
   }))
 
   // ── Lights ──────────────────────────────────────────────────────────────────
-  const AmbientLight     = vi.fn().mockImplementation(() => ({}))
-  const DirectionalLight = vi.fn().mockImplementation(() => ({ position: { set: vi.fn() } }))
-  const PointLight       = vi.fn().mockImplementation(() => ({ position: { set: vi.fn() } }))
+  const AmbientLight     = mockCtor(() => ({}))
+  const DirectionalLight = mockCtor(() => ({ position: { set: vi.fn() } }))
+  const PointLight       = mockCtor(() => ({ position: { set: vi.fn() } }))
 
   // ── Core scene graph ────────────────────────────────────────────────────────
   const Scene = vi.fn().mockImplementation(function (this: Record<string, unknown>) {
@@ -117,15 +145,15 @@ vi.mock('three', () => {
   })
 
   // ── Texture ─────────────────────────────────────────────────────────────────
-  const TextureLoader = vi.fn().mockImplementation(() => ({
+  const TextureLoader = mockCtor(() => ({
     load:        vi.fn(),
     crossOrigin: '',
   }))
-  const CanvasTexture  = vi.fn().mockImplementation(() => ({}))
-  const BufferAttribute = vi.fn().mockImplementation(() => ({}))
+  const CanvasTexture  = mockCtor(() => ({}))
+  const BufferAttribute = mockCtor(() => ({}))
 
   // ── Fog ─────────────────────────────────────────────────────────────────────
-  const FogExp2 = vi.fn().mockImplementation(() => ({}))
+  const FogExp2 = mockCtor(() => ({}))
 
   return {
     WebGLRenderer, Scene, PerspectiveCamera,

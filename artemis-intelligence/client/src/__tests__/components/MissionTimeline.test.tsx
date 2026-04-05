@@ -10,7 +10,7 @@ describe('MissionTimeline', () => {
 
   it('shows the NOW indicator text', () => {
     render(<MissionTimeline metElapsed="083:42:16" />)
-    expect(screen.getByText(/NOW/i)).toBeInTheDocument()
+    expect(screen.getByText(/^NOW$/)).toBeInTheDocument()
   })
 
   it('shows LIFTOFF event label', () => {

@@ -33,7 +33,7 @@ describe('TelemetryMap3D', () => {
 
   it('renders ARTEMIS II focus button', () => {
     render(<TelemetryMap3D {...defaultProps} />)
-    expect(screen.getByText(/ARTEMIS II/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /ARTEMIS II/i })).toBeInTheDocument()
   })
 
   it('shows MET in the HUD', () => {
@@ -117,7 +117,7 @@ describe('TelemetryMap3D', () => {
 
   it('ARTEMIS II button click does not throw', () => {
     render(<TelemetryMap3D {...defaultProps} />)
-    const btn = screen.getByText(/ARTEMIS II/i).closest('button')
+    const btn = screen.getByRole('button', { name: /ARTEMIS II/i })
     expect(() => btn && fireEvent.click(btn)).not.toThrow()
   })
 })
