@@ -1,11 +1,5 @@
 import { useEffect, useState } from "react";
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
-import {
-  AUTH_STATE_CHANGE_EVENT,
-  AuthUser,
-  clearAuthSession,
-  readAuthUser,
-} from "../lib/auth";
+import { Outlet, NavLink } from "react-router-dom";
 import {
   applyTheme,
   getPreferredTheme,
@@ -18,57 +12,19 @@ const navItems = [
   { to: "/replay", label: "Replay" },
   { to: "/crew", label: "Crew" },
   { to: "/news", label: "News" },
-  { to: "/chat", label: "Chat" },
 ];
 
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() || "")
-    .join("");
-}
-
 export default function Layout() {
-  const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() =>
-    readAuthUser(),
-  );
   const [theme, setTheme] = useState<Theme>(() => getPreferredTheme());
-
-  useEffect(() => {
-    function syncAuthState() {
-      setCurrentUser(readAuthUser());
-    }
-
-    syncAuthState();
-    window.addEventListener(AUTH_STATE_CHANGE_EVENT, syncAuthState);
-    window.addEventListener("storage", syncAuthState);
-
-    return () => {
-      window.removeEventListener(AUTH_STATE_CHANGE_EVENT, syncAuthState);
-      window.removeEventListener("storage", syncAuthState);
-    };
-  }, []);
 
   useEffect(() => {
     applyTheme(theme);
     persistTheme(theme);
   }, [theme]);
 
-  function handleLogout() {
-    clearAuthSession();
-    navigate("/login");
-  }
-
   function handleThemeToggle() {
     setTheme((currentTheme) => (currentTheme === "dark" ? "light" : "dark"));
   }
-
-  const avatarLabel = currentUser
-    ? getInitials(currentUser.name).slice(0, 1) || "A"
-    : "G";
 
   return (
     <div className="app-shell">
@@ -132,16 +88,6 @@ export default function Layout() {
             <span className="app-theme-toggle__label">
               {theme === "dark" ? "Light" : "Dark"}
             </span>
-          </button>
-          <span className="app-nav__divider" aria-hidden="true" />
-          <button
-            type="button"
-            className="app-avatar"
-            onClick={currentUser ? handleLogout : () => navigate("/login")}
-            title={currentUser ? `Sign out ${currentUser.name}` : "Log in"}
-            aria-label={currentUser ? `Sign out ${currentUser.name}` : "Log in"}
-          >
-            {avatarLabel}
           </button>
         </div>
       </header>
