@@ -255,7 +255,7 @@ export default function WindowView({ distanceFromEarthKm, distanceFromMoonKm, me
         const earthAngle = apparentAngularSize(EARTH_RADIUS_KM, Math.max(distanceFromEarthKm, 1))
         const earthDiameter = clamp((VIEW_DIAMETER * earthAngle) / 60, 0, VIEW_DIAMETER * 0.68)
 
-        if (distanceFromEarthKm < 50000 && earthDiameter > 2) {
+        if (earthDiameter > 2) {
           drawEarth(context, CENTER - VIEW_RADIUS * 0.4, CENTER + VIEW_RADIUS * 0.22, earthDiameter, time)
         }
 

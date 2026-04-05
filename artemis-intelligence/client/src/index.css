@@ -810,7 +810,8 @@ canvas {
 }
 
 .dashboard-feed-frame {
-  height: 480px;
+  flex: 1;
+  min-height: 480px;
 }
 
 .mission-sidebar-panel,

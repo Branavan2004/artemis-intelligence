@@ -347,8 +347,54 @@ export default function DSNTracker() {
       </div>
 
       <div className="grid xl:grid-cols-[minmax(0,1.6fr)_390px]">
-        <div className="border-b border-[color:var(--border)] bg-[#050A14] p-4 md:p-6 xl:border-b-0 xl:border-r xl:p-8">
+        <div className="flex flex-col border-b border-[color:var(--border)] bg-[#050A14] p-4 md:p-6 xl:border-b-0 xl:border-r xl:p-8">
           {renderMap(stations, activeStations)}
+
+          <div className="mt-10 border-t border-slate-800/60 pt-6">
+            <h4 className="mb-4 font-mono text-[11px] uppercase tracking-[0.2em] text-white/50">
+              Signal Telemetry
+            </h4>
+            <div className="flex flex-col gap-2">
+              {stations.map((station) => {
+                const isActive = station.isActive
+                const tone = isActive ? 'text-emerald-400' : 'text-slate-500'
+                const bgTone = isActive ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-slate-800/30 border-slate-700/50'
+                
+                const freq = station.activeDish?.downlink?.frequencyMhz || station.activeDish?.uplink?.frequencyMhz || 0
+                const rate = station.activeDish?.downlink?.dataRateBps || station.activeDish?.uplink?.dataRateBps || 0
+                const rateKbps = (rate / 1000).toFixed(1)
+                
+                const dishName = station.activeDish?.name || ''
+                const is70m = ['14', '43', '63'].some((id) => dishName.includes(id))
+                const dishSize = station.activeDish ? (is70m ? '70M' : '34M') : '—'
+
+                return (
+                  <div key={station.id} className={`flex items-center justify-between rounded border px-4 py-3 font-mono text-xs ${bgTone}`}>
+                    <div className="flex flex-[1.2] items-center gap-2 min-w-0">
+                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                      <span className={`truncate uppercase tracking-wider ${tone}`}>{station.friendlyName}</span>
+                    </div>
+                    
+                    <div className={`flex-1 tracking-wider ${tone}`}>
+                      {isActive ? 'ACTIVE' : 'STANDBY'}
+                    </div>
+
+                    <div className="flex-1 text-slate-300">
+                      {isActive && freq > 0 ? `${freq.toFixed(2)} MHz` : '—'}
+                    </div>
+
+                    <div className="flex-1 text-slate-300">
+                      {isActive && rate > 0 ? `${rateKbps} kbps` : '—'}
+                    </div>
+
+                    <div className="flex-[0.8] text-right text-slate-400">
+                      {dishSize}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
 
         <div className="bg-[color:var(--surface)] p-6 md:p-8">

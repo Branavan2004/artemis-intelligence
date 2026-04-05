@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { metStringToSeconds } from '../hooks/useReplayClock'
+import { useEffect, useRef, useState } from 'react'
+import { metStringToSeconds, LAUNCH_EPOCH_MS } from '../hooks/useReplayClock'
 
 interface MissionTimelineProps {
   metElapsed: string
@@ -261,6 +261,15 @@ export default function MissionTimeline({ metElapsed, compact = false, onSeek }:
   const timelineTotalSeconds = 204 * 3600
   const scrubberFraction = clamp(metStringToSeconds(metElapsed) / timelineTotalSeconds, 0, 1)
 
+  const [liveMetSeconds, setLiveMetSeconds] = useState(() => Math.max(0, Math.floor((Date.now() - LAUNCH_EPOCH_MS) / 1000)))
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setLiveMetSeconds(Math.max(0, Math.floor((Date.now() - LAUNCH_EPOCH_MS) / 1000)))
+    }, 1000)
+    return () => clearInterval(intervalId)
+  }, [])
+
   let activeIndex = -1
   for (let index = 0; index < TIMELINE_EVENTS.length; index += 1) {
     if (metStringToSeconds(TIMELINE_EVENTS[index].met) <= metSeconds) {
@@ -269,20 +278,21 @@ export default function MissionTimeline({ metElapsed, compact = false, onSeek }:
   }
 
   const activeEvent = activeIndex >= 0 ? TIMELINE_EVENTS[activeIndex] : null
-  const nowLeft = trackPadding + (metSeconds / missionDurationSeconds) * (trackWidth - trackPadding * 2)
+  const scrubberLeft = trackPadding + (metSeconds / missionDurationSeconds) * (trackWidth - trackPadding * 2)
+  const liveNowLeft = trackPadding + (clamp(liveMetSeconds, 0, missionDurationSeconds) / missionDurationSeconds) * (trackWidth - trackPadding * 2)
 
   useEffect(() => {
     const container = scrollRef.current
     if (!container) return
 
-    const nextScrollLeft = clamp(nowLeft - container.clientWidth / 2, 0, trackWidth - container.clientWidth)
+    const nextScrollLeft = clamp(scrubberLeft - container.clientWidth / 2, 0, trackWidth - container.clientWidth)
     if (compact) {
       container.scrollLeft = nextScrollLeft
       return
     }
 
     container.scrollTo({ left: nextScrollLeft, behavior: 'smooth' })
-  }, [nowLeft, trackWidth])
+  }, [scrubberLeft, trackWidth, compact])
 
   const headerPadding = compact ? '10px 16px 8px' : '14px 20px 10px'
   const headerSecondaryMargin = compact ? 3 : 6
@@ -428,7 +438,7 @@ export default function MissionTimeline({ metElapsed, compact = false, onSeek }:
               position: 'absolute',
               top: nowIndicatorTop,
               bottom: nowIndicatorBottom,
-              left: nowLeft,
+              left: liveNowLeft,
               width: 1.5,
               background: 'var(--abort)',
             }}
@@ -438,7 +448,7 @@ export default function MissionTimeline({ metElapsed, compact = false, onSeek }:
             style={{
               position: 'absolute',
               top: 0,
-              left: nowLeft - 12,
+              left: liveNowLeft - 12,
               fontSize: compact ? 9 : 10,
               color: 'var(--abort)',
               letterSpacing: '0.12em',
