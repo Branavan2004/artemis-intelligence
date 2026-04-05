@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Send } from 'lucide-react'
 import { API_BASE_URL, api } from '../lib/api'
-import { clearAuthSession, readAuthToken } from '../lib/auth'
+import { clearAuthSession, readAuthToken, readAuthUser } from '../lib/auth'
+import { useTelemetry } from '../hooks/useTelemetry'
+import { formatMissionMet, getMissionHoursElapsed } from '../lib/mission'
+import { getDistanceFromEarthKm, getVelocityKmS } from '../lib/replay'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -16,18 +18,49 @@ interface ChatHistoryItem {
   createdAt: string
 }
 
-const SUGGESTED = [
-  'What is the current mission phase?',
-  'Tell me about the Artemis II crew',
-  'How does the Orion spacecraft work?',
-  'What records will Artemis II break?',
-  'How is Artemis different from Apollo?',
+interface MissionResponse {
+  launchDate: string
+}
+
+const SUGGESTED_PROMPTS = [
+  'What is the signal delay right now?',
+  'How far is the crew from the Moon?',
+  'What are the crew doing right now?',
+  'Has the distance record been broken?',
 ]
 
 const WELCOME_MESSAGE: Message = {
   role: 'assistant',
-  content:
-    'I can help with mission phases, crew details, spacecraft questions, and Apollo comparisons. Ask a question to start.',
+  content: 'Telemetry-linked mission control assistant online. Ask about signal delay, lunar distance, crew activity, or the current record status.',
+}
+
+const NUMBER_PATTERN = /(\b\d[\d,]*(?:\.\d+)?(?:\s?(?:km\/s|km|s|days?|hours?|minutes?|%|°F|G))?)/g
+const NUMBER_SEGMENT = /^\d[\d,]*(?:\.\d+)?(?:\s?(?:km\/s|km|s|days?|hours?|minutes?|%|°F|G))?$/
+
+function renderAssistantContent(content: string) {
+  return content.split(NUMBER_PATTERN).map((segment, index) => {
+    if (!segment) {
+      return null
+    }
+
+    if (NUMBER_SEGMENT.test(segment)) {
+      return (
+        <span key={`${segment}-${index}`} className="data-value">
+          {segment}
+        </span>
+      )
+    }
+
+    return <span key={`${segment}-${index}`}>{segment}</span>
+  })
+}
+
+function getMissionPhaseLabel(hoursElapsed: number) {
+  if (hoursElapsed < 25) return 'Earth Orbit'
+  if (hoursElapsed < 94) return 'Cislunar Transit'
+  if (hoursElapsed < 120) return 'Lunar Flyby'
+  if (hoursElapsed < 204) return 'Return Transit'
+  return 'Reentry & Recovery'
 }
 
 export default function Chat() {
@@ -38,11 +71,32 @@ export default function Chat() {
   const [historyLoading, setHistoryLoading] = useState(true)
   const [historyError, setHistoryError] = useState('')
   const [isFallbackMode, setIsFallbackMode] = useState(false)
+  const [isInputFocused, setIsInputFocused] = useState(false)
+  const [launchDate, setLaunchDate] = useState<string | null>(null)
+  const [now, setNow] = useState(() => new Date())
   const bottomRef = useRef<HTMLDivElement>(null)
+  const { data: telemetry } = useTelemetry()
+  const authUser = readAuthUser()
+  const userLabel = authUser?.name?.toUpperCase() || 'USER'
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(new Date())
+    }, 1000)
+
+    return () => window.clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    api
+      .get<MissionResponse>('/api/mission')
+      .then((response) => setLaunchDate(response.data.launchDate))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -96,7 +150,7 @@ export default function Chat() {
       }
     }
 
-    loadHistory()
+    void loadHistory()
 
     return () => {
       active = false
@@ -175,159 +229,114 @@ export default function Chat() {
     }
   }
 
+  const hoursElapsed = launchDate ? getMissionHoursElapsed(launchDate, now) : 0
+  const phase = launchDate ? getMissionPhaseLabel(hoursElapsed) : 'Awaiting mission clock'
+  const metElapsed = launchDate ? formatMissionMet(launchDate, now) : '00:00:00'
+  const distance = telemetry?.trajectory?.distanceFromEarthKm ?? getDistanceFromEarthKm(hoursElapsed)
+  const velocity = telemetry?.trajectory?.speedKmS ?? getVelocityKmS(hoursElapsed)
+  const signalDelay = distance / 299792
+  const risk = telemetry?.spaceWeather?.riskLevel ?? 'nominal'
+  const distanceFromMoon = Math.abs(384400 - distance)
+  const recordDelta = Math.round(distance - 400171)
+
   return (
-    <div className="page">
-      <section className="page-header-split">
-        <div className="page-header">
-          <p className="section-label">Chat</p>
-          <h1 className="page-title">Mission assistant</h1>
-          <p className="page-copy">
-            Ask questions about Artemis II, the crew, mission phases, and how the current program compares with Apollo.
-          </p>
-        </div>
+    <div className="chat-page">
+      <section className="chat-main">
+        <header className="chat-header">
+          <div className="panel-label">Mission Control AI</div>
+          <div className="chat-header-copy">Context-aware · Grounded in live telemetry</div>
+        </header>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="card-plain p-6">
-            <p className="section-label">Model status</p>
-            <div className="mt-4 text-[28px] font-semibold tracking-[-0.02em] text-[color:var(--text)]">
-              {isFallbackMode ? 'Fallback' : 'Ready'}
-            </div>
-            <p className="mt-4 text-sm text-[color:var(--muted)]">
-              {isFallbackMode ? 'Local mission knowledge base in use.' : 'Streaming responses available.'}
-            </p>
-          </div>
-          <div className="card-plain p-6">
-            <p className="section-label">History</p>
-            <div className="mt-4 text-[28px] font-semibold tracking-[-0.02em] text-[color:var(--text)]">
-              {historyLoading ? 'Loading' : `${messages.length}`}
-            </div>
-            <p className="mt-4 text-sm text-[color:var(--muted)]">Visible messages in the current authenticated session.</p>
-          </div>
-        </div>
-      </section>
+        {isFallbackMode ? <div className="chat-note">Live model unavailable. Responses are currently grounded in the local mission knowledge base.</div> : null}
+        {historyLoading ? <div className="chat-note">Loading previous messages...</div> : null}
+        {historyError ? <div className="chat-note">{historyError}</div> : null}
 
-      <section className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-        <div className="space-y-4">
-          {isFallbackMode && (
-            <div className="card border-amber-500/40 bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-              The live Gemini model is unavailable, so responses are coming from the local mission knowledge base.
-            </div>
-          )}
+        <div className="chat-messages">
+          {messages.map((message, index) => {
+            const isEmptyAssistant = message.role === 'assistant' && !message.content && loading
 
-          {(historyLoading || historyError) && (
-            <div
-              className={`card p-4 text-sm ${
-                historyLoading
-                  ? 'border-blue-600/30 bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300'
-                  : 'border-amber-500/40 bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200'
-              }`}
-            >
-              {historyLoading ? 'Loading previous messages...' : historyError}
-            </div>
-          )}
-
-          <div className="card p-6 md:p-8">
-            <div className="flex flex-col gap-3 border-b border-[color:var(--border)] pb-4 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="text-sm font-medium text-[color:var(--text)]">Conversation</p>
-                <p className="mt-1 text-sm text-[color:var(--muted)]">
-                  {historyLoading ? 'Loading history' : `${messages.length} messages`}
-                </p>
-              </div>
-              <div className="text-sm text-[color:var(--muted)]">
-                Scope: <span className="font-medium text-[color:var(--text)]">Mission, crew, spacecraft, history</span>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              {SUGGESTED.map((question) => (
-                <button key={question} onClick={() => sendMessage(question)} className="pill-button">
-                  {question}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-6 max-h-[560px] overflow-y-auto rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-soft)] p-4">
-              <div className="space-y-4">
-                {messages.map((message, index) => (
-                  <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div
-                      className={`max-w-[80%] rounded-lg px-4 py-3 text-sm leading-7 ${
-                        message.role === 'user'
-                          ? 'bg-blue-600 text-white'
-                          : 'border border-[color:var(--border)] bg-[color:var(--surface-elevated)] text-[color:var(--text)]'
-                      }`}
-                    >
-                      {message.content || <span className="text-[color:var(--muted)]">Thinking...</span>}
-                    </div>
-                  </div>
-                ))}
-                <div ref={bottomRef} />
-              </div>
-            </div>
-
-            <div className="mt-6 flex gap-3">
-              <input
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => event.key === 'Enter' && sendMessage()}
-                placeholder="Ask a question about Artemis II"
-                className="input-field flex-1"
-              />
-              <button
-                type="button"
-                onClick={() => sendMessage()}
-                disabled={loading || historyLoading || !input.trim()}
-                className="button-primary w-11 px-0"
-              >
-                <Send className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="card p-6">
-            <p className="section-label">Coverage</p>
-            <h2 className="section-title mt-2">What the assistant covers</h2>
-            <div className="mt-6 space-y-4">
-              {[
-                'Mission phases and timeline',
-                'Crew records and roles',
-                'Spacecraft and launch system details',
-                'Apollo and Artemis comparisons',
-              ].map((item) => (
-                <div key={item} className="flex items-start gap-3">
-                  <span className="mt-2 h-2 w-2 rounded-full bg-blue-600" />
-                  <span className="text-sm text-[color:var(--text)]">{item}</span>
+            return (
+              <article key={`${message.role}-${index}`} className={`chat-message chat-message--${message.role}`}>
+                <span className="chat-message__label">{message.role === 'user' ? userLabel : 'ARTEMIS AI · MISSION CONTROL'}</span>
+                <div className="chat-message__body">
+                  {isEmptyAssistant ? (
+                    <span className="chat-loading" aria-label="Thinking">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                  ) : message.role === 'assistant' ? (
+                    renderAssistantContent(message.content)
+                  ) : (
+                    message.content
+                  )}
                 </div>
-              ))}
-            </div>
-          </div>
+              </article>
+            )
+          })}
+          <div ref={bottomRef} />
+        </div>
 
-          <div className="card p-6">
-            <p className="section-label">Prompt ideas</p>
-            <h2 className="section-title mt-2">Questions to try</h2>
-            <div className="mt-6 space-y-2">
-              {[
-                'What makes Artemis II historically important?',
-                'Which crew members are setting new records?',
-                'Why does the mission use a free-return trajectory?',
-                'What is happening in the current mission phase?',
-              ].map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => sendMessage(item)}
-                  className="w-full rounded-lg border border-[color:var(--border)] px-4 py-3 text-left text-sm text-[color:var(--text)] transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className={`chat-inputbar${isInputFocused ? ' chat-inputbar--focused' : ''}`}>
+          <input
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && sendMessage()}
+            onFocus={() => setIsInputFocused(true)}
+            onBlur={() => setIsInputFocused(false)}
+            placeholder="Ask mission control..."
+            className="chat-input"
+          />
+          <button
+            type="button"
+            onClick={() => sendMessage()}
+            disabled={loading || historyLoading || !input.trim()}
+            className="chat-send"
+          >
+            →
+          </button>
         </div>
       </section>
+
+      <aside className="chat-sidebar">
+        <div className="panel-label">Live Context</div>
+        <div className="chat-context-rows" style={{ marginTop: 16 }}>
+          {[
+            ['MET', metElapsed, ''],
+            ['DISTANCE', `${Math.round(distance).toLocaleString()} km`, ''],
+            ['VELOCITY', `${velocity.toFixed(3)} km/s`, ''],
+            ['SIGNAL DELAY', `${signalDelay.toFixed(2)} s`, ''],
+            ['RADIATION', risk.toUpperCase(), risk],
+            ['PHASE', phase, ''],
+            ['FROM MOON', `${Math.round(distanceFromMoon).toLocaleString()} km`, ''],
+          ].map(([label, value, tone]) => (
+            <div key={label} className="chat-context-row">
+              <span className="chat-context-key">{label}</span>
+              <span className={`chat-context-value${tone ? ` chat-context-value--${tone}` : ''}`}>{value}</span>
+            </div>
+          ))}
+
+          {recordDelta > 0 ? (
+            <div className="chat-context-row">
+              <span className="chat-context-key">RECORD DIST</span>
+              <span className="chat-context-value">+{recordDelta.toLocaleString()} km</span>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="panel-divider" style={{ marginTop: 20, marginBottom: 20 }} />
+
+        <div className="panel-label">What You Can Ask</div>
+        <div className="chat-chip-list">
+          {SUGGESTED_PROMPTS.map((prompt) => (
+            <button key={prompt} type="button" className="chat-chip" onClick={() => setInput(prompt)}>
+              {prompt}
+            </button>
+          ))}
+        </div>
+
+        <p className="chat-sidebar-note">AI responses grounded in real-time telemetry data</p>
+      </aside>
     </div>
   )
 }

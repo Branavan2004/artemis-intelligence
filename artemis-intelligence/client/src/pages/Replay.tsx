@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
-import { Pause, Play } from 'lucide-react'
+import MissionTimeline from '../components/MissionTimeline'
+import TelemetryMap3D from '../components/TelemetryMap3D'
+import { type TelemetryPayload, useTelemetry } from '../hooks/useTelemetry'
 import { api } from '../lib/api'
-import { getMissionHoursElapsed } from '../lib/mission'
+import { formatMissionMetFromHours, formatMissionMetFromTimestamp, getMissionHoursElapsed } from '../lib/mission'
 import {
   MissionPhaseWindow,
   clampMissionHour,
@@ -13,9 +14,8 @@ import {
   getPhaseCompletion,
   getReplayPhase,
   getReplayProgress,
-  getTrajectoryLabel,
-  getTrajectoryPoint,
   getUpcomingReplayEvent,
+  getTrajectoryLabel,
   getVelocityKmS,
 } from '../lib/replay'
 
@@ -30,15 +30,18 @@ interface MissionData {
   spacecraft: { name: string; rocket: string; launchSite: string; splashdownTarget: string }
 }
 
-const fadeIn = {
-  hidden: { opacity: 0, y: 8 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' } },
-}
+const APOLLO_13_RECORD_KM = 400171
+const REPLAY_SPEEDS = [0.5, 1, 2, 4] as const
+const REPLAY_STEP_HOURS = 0.25
 
 function formatReplayClock(hour: number) {
   const wholeHours = Math.floor(hour)
   const minutes = Math.floor((hour - wholeHours) * 60)
-  return `T+ ${wholeHours}h ${minutes}m`
+  return `T+ ${String(wholeHours).padStart(3, '0')}h ${String(minutes).padStart(2, '0')}m`
+}
+
+function getLiveSourceLabel(telemetry: TelemetryPayload | null) {
+  return [telemetry?.trajectory?.source, telemetry?.spaceWeather?.source].filter(Boolean).join(' + ')
 }
 
 export default function Replay() {
@@ -46,6 +49,8 @@ export default function Replay() {
   const [replayHour, setReplayHour] = useState(0)
   const [isLiveMode, setIsLiveMode] = useState(true)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [replaySpeed, setReplaySpeed] = useState<(typeof REPLAY_SPEEDS)[number]>(1)
+  const { data: telemetry, loading: telemetryLoading, error: telemetryError } = useTelemetry()
 
   useEffect(() => {
     api.get('/api/mission').then((response) => setMission(response.data))
@@ -59,19 +64,19 @@ export default function Replay() {
     }
 
     syncToLive()
-    const interval = setInterval(syncToLive, 1000)
-    return () => clearInterval(interval)
+    const interval = window.setInterval(syncToLive, 1000)
+    return () => window.clearInterval(interval)
   }, [mission, isLiveMode])
 
   useEffect(() => {
     if (isLiveMode || !isPlaying) return
 
-    const interval = setInterval(() => {
-      setReplayHour((current) => Math.min(current + 0.5, 240))
-    }, 400)
+    const interval = window.setInterval(() => {
+      setReplayHour((current) => Math.min(current + REPLAY_STEP_HOURS * replaySpeed, 240))
+    }, 200)
 
-    return () => clearInterval(interval)
-  }, [isLiveMode, isPlaying])
+    return () => window.clearInterval(interval)
+  }, [isLiveMode, isPlaying, replaySpeed])
 
   useEffect(() => {
     if (replayHour >= 240 && isPlaying) {
@@ -81,319 +86,327 @@ export default function Replay() {
 
   if (!mission) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-[color:var(--muted)]">
-        Loading replay data...
+      <div className="page-shell">
+        <div
+          className="panel-frame"
+          style={{
+            minHeight: 'calc(100vh - 180px)',
+            display: 'grid',
+            placeItems: 'center',
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <span className="panel-label">Replay</span>
+            <h1 className="section-title">Loading mission replay</h1>
+            <p className="section-copy">Syncing Artemis II phase windows, telemetry, and timeline state.</p>
+          </div>
+        </div>
       </div>
     )
   }
 
-  const activePhase = getReplayPhase(mission.phases, replayHour)
+  const liveMissionHour = clampMissionHour(getMissionHoursElapsed(mission.launchDate))
+  const liveTrajectory = telemetry?.trajectory
+  const liveSpaceWeather = telemetry?.spaceWeather
+  const liveSourceLabel = getLiveSourceLabel(telemetry)
+  const liveMetElapsed = formatMissionMetFromTimestamp(
+    mission.launchDate,
+    liveTrajectory?.timestamp ?? liveSpaceWeather?.timestamp,
+  )
+  const liveDistance = liveTrajectory?.distanceFromEarthKm ?? getDistanceFromEarthKm(liveMissionHour)
+  const liveVelocity = liveTrajectory?.speedKmS ?? getVelocityKmS(liveMissionHour)
+  const activeHour = isLiveMode ? liveMissionHour : replayHour
+  const selectedMetElapsed = isLiveMode ? liveMetElapsed : formatMissionMetFromHours(replayHour)
+  const mapDistance = isLiveMode ? liveDistance : getDistanceFromEarthKm(replayHour)
+  const mapVelocity = isLiveMode ? liveVelocity : getVelocityKmS(replayHour)
+  const activePhase = getReplayPhase(mission.phases, activeHour)
   const briefing = getMissionBriefing(activePhase.name)
-  const missionPoint = getTrajectoryPoint(replayHour)
-  const distanceFromEarth = getDistanceFromEarthKm(replayHour)
-  const velocity = getVelocityKmS(replayHour)
-  const visibleEvents = getLatestReplayEvents(replayHour)
-  const upcomingEvent = getUpcomingReplayEvent(replayHour)
-  const replayProgress = getReplayProgress(replayHour)
-  const phaseProgress = getPhaseCompletion(activePhase, replayHour)
+  const visibleEvents = getLatestReplayEvents(activeHour)
+  const upcomingEvent = getUpcomingReplayEvent(activeHour)
+  const replayProgress = getReplayProgress(activeHour)
+  const phaseProgress = getPhaseCompletion(activePhase, activeHour)
+  const signalDelaySeconds = mapDistance / 299792
+  const selectedMoonDistance = Math.abs(384400 - mapDistance)
+  const liveMoonDistance = liveTrajectory?.distanceFromMoonKm ?? Math.abs(384400 - liveDistance)
+  const recordBroken = mapDistance >= APOLLO_13_RECORD_KM
+  const recordProgress = Math.min(100, (mapDistance / APOLLO_13_RECORD_KM) * 100)
+  const telemetryStatus = telemetryLoading ? 'Syncing' : telemetryError ? 'Fallback' : isLiveMode ? 'Live' : 'Replay'
 
   return (
-    <div className="page">
-      <motion.section initial="hidden" animate="show" variants={fadeIn} className="page-header-split">
-        <div className="page-header">
-          <p className="section-label">Replay</p>
-          <h1 className="page-title">Mission replay</h1>
-          <p className="page-copy">
-            Scrub through Artemis II from launch to splashdown, follow the Earth-to-Moon path, and inspect telemetry at any selected moment.
-          </p>
+    <div className="replay-immersive" data-mission-name={mission.name}>
+      <div className="replay-immersive__stage">
+        <div className="replay-immersive__map">
+          <TelemetryMap3D
+            distanceFromEarthKm={mapDistance}
+            speedKmS={mapVelocity}
+            metElapsed={selectedMetElapsed}
+            riskLevel={liveSpaceWeather?.riskLevel ?? 'nominal'}
+            fullscreen
+          />
         </div>
 
-        <div className="card p-6">
-          <p className="section-label">Selected phase</p>
-          <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.02em] text-[color:var(--text)]">{activePhase.name}</h2>
-          <div className="mt-6 flex items-center justify-between text-sm text-[color:var(--muted)]">
-            <span>Replay progress</span>
-            <span className="font-mono text-[color:var(--text)]">{Math.round(replayProgress)}%</span>
-          </div>
-          <div className="mt-3 h-1 rounded-full bg-slate-200 dark:bg-slate-800">
-            <div className="h-1 rounded-full bg-blue-600" style={{ width: `${replayProgress}%` }} />
-          </div>
-          <div className="mt-4 flex items-center justify-between text-sm text-[color:var(--muted)]">
-            <span>Phase completion</span>
-            <span className="font-mono text-[color:var(--text)]">{Math.round(phaseProgress)}%</span>
-          </div>
-          <div className="mt-3 h-1 rounded-full bg-slate-200 dark:bg-slate-800">
-            <div className="h-1 rounded-full bg-slate-900 dark:bg-slate-100" style={{ width: `${phaseProgress}%` }} />
-          </div>
-        </div>
-      </motion.section>
+        <section className="replay-overlay-panel replay-overlay-panel--hud replay-enter-left">
+          <div className="replay-overlay-heading">Orion Telemetry</div>
 
-      <motion.section initial="hidden" animate="show" variants={fadeIn} className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          {mission.phases.filter((phase) => phase.endHour > 0).map((phase) => (
-            <button
-              key={phase.name}
-              type="button"
-              onClick={() => {
-                setIsLiveMode(false)
-                setIsPlaying(false)
-                setReplayHour(phase.startHour < 0 ? 0 : phase.startHour)
-              }}
-              className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                activePhase.name === phase.name
-                  ? 'border-blue-600 bg-blue-600 text-white'
-                  : 'border-[color:var(--border)] text-[color:var(--muted)] hover:text-[color:var(--text)]'
-              }`}
-            >
-              {phase.name}
-            </button>
+          {[
+            ['MET', selectedMetElapsed],
+            ['DISTANCE', `${Math.round(mapDistance).toLocaleString()} km`],
+            ['VELOCITY', `${mapVelocity.toFixed(3)} km/s`],
+            ['SIGNAL', `${signalDelaySeconds.toFixed(2)}s delay`],
+          ].map(([label, value]) => (
+            <div key={label} className="replay-telemetry-row">
+              <div className="replay-telemetry-label">{label}</div>
+              <div className="replay-telemetry-value">{value}</div>
+            </div>
           ))}
-        </div>
+        </section>
 
-        <div className="grid gap-6 xl:grid-cols-[1.45fr_0.55fr]">
-          <div className="card overflow-hidden">
-            <div className="flex flex-col gap-3 border-b border-[color:var(--border)] px-6 py-5 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="section-label">Trajectory</p>
-                <h2 className="section-title mt-2">Earth to Moon path</h2>
-              </div>
-              <div className="text-sm text-[color:var(--muted)]">
-                {upcomingEvent ? `Next milestone: ${upcomingEvent.title}` : 'Mission sequence complete'}
-              </div>
-            </div>
-
-            <div className="border-b border-[color:var(--border)] bg-[#0F1117] p-4 md:p-6">
-              <svg viewBox="0 0 720 280" className="w-full">
-                {[120, 240, 360, 480, 600].map((x) => (
-                  <line key={`v-${x}`} x1={x} y1="24" x2={x} y2="252" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-                ))}
-                {[80, 140, 200].map((y) => (
-                  <line key={`h-${y}`} x1="32" y1={y} x2="688" y2={y} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-                ))}
-
-                <circle cx="110" cy="190" r="30" fill="#FFFFFF" fillOpacity="0.12" />
-                <circle cx="110" cy="190" r="18" fill="#FFFFFF" />
-                <text x="110" y="236" textAnchor="middle" className="fill-white text-[12px]">
-                  Earth
-                </text>
-
-                <circle cx="594" cy="96" r="22" fill="#FFFFFF" fillOpacity="0.12" />
-                <circle cx="594" cy="96" r="14" fill="#FFFFFF" />
-                <text x="594" y="136" textAnchor="middle" className="fill-white text-[12px]">
-                  Moon
-                </text>
-
-                <path
-                  d="M 110 190 Q 340 12 594 96"
-                  fill="none"
-                  stroke="#FFFFFF"
-                  strokeWidth="2"
-                  strokeDasharray="8 8"
-                  strokeLinecap="round"
-                  opacity="0.8"
-                />
-                <path
-                  d="M 594 96 Q 400 286 152 224"
-                  fill="none"
-                  stroke="#FFFFFF"
-                  strokeWidth="2"
-                  strokeDasharray="8 8"
-                  strokeLinecap="round"
-                  opacity="0.8"
-                />
-
-                <circle cx="278" cy="79" r="4" fill="#FFFFFF" />
-                <text x="278" y="60" textAnchor="middle" className="fill-white text-[11px]">
-                  TLI
-                </text>
-
-                <circle cx="560" cy="101" r="4" fill="#FFFFFF" />
-                <text x="560" y="76" textAnchor="middle" className="fill-white text-[11px]">
-                  Flyby
-                </text>
-
-                <circle cx="152" cy="224" r="6" fill="#FFFFFF" />
-                <text x="152" y="248" textAnchor="middle" className="fill-white text-[11px]">
-                  Splashdown
-                </text>
-
-                <circle cx={missionPoint.x} cy={missionPoint.y} r="4" fill="#FFFFFF" />
-                <text x={missionPoint.x + 10} y={missionPoint.y - 10} className="fill-white text-[12px]">
-                  Orion
-                </text>
-              </svg>
-            </div>
-
-            <div className="space-y-5 px-6 py-5">
-              <div className="grid gap-4 md:grid-cols-[auto_1fr_auto] md:items-center">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isLiveMode) setIsLiveMode(false)
-                      setIsPlaying((current) => !current)
-                    }}
-                    className="button-secondary w-10 px-0"
-                  >
-                    {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsLiveMode(true)
-                      setIsPlaying(false)
-                      setReplayHour(clampMissionHour(getMissionHoursElapsed(mission.launchDate)))
-                    }}
-                    className="button-secondary"
-                  >
-                    Jump to live
-                  </button>
-                </div>
-
-                <input
-                  type="range"
-                  min={0}
-                  max={240}
-                  step={0.5}
-                  value={replayHour}
-                  onChange={(event) => {
-                    setIsLiveMode(false)
-                    setIsPlaying(false)
-                    setReplayHour(Number(event.target.value))
-                  }}
-                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-blue-600 dark:bg-slate-800"
-                />
-
-                <div className="text-right">
-                  <div className="font-mono text-sm text-[color:var(--text)]">{formatReplayClock(replayHour)}</div>
-                  <div className="text-xs text-[color:var(--muted)]">{isLiveMode ? 'Live mode' : 'Replay mode'}</div>
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-3">
-                {[
-                  ['Distance', `${distanceFromEarth.toLocaleString()} km`],
-                  ['Velocity', `${velocity} km/s`],
-                  ['Trajectory', getTrajectoryLabel(replayHour)],
-                ].map(([label, value]) => (
-                  <div key={label} className="card-muted px-4 py-3">
-                    <p className="eyebrow">{label}</p>
-                    <p className="mt-1 font-mono text-sm text-[color:var(--text)]">{value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+        <section className="replay-overlay-panel replay-overlay-panel--phase replay-enter-right">
+          <div className="panel-header" style={{ marginBottom: 12 }}>
+            <span className="panel-label">Mission Phase</span>
+            <span className={`replay-overlay-status${telemetryStatus === 'Live' ? ' replay-overlay-status--live' : ''}`}>
+              {telemetryStatus}
+            </span>
           </div>
 
-          <div className="space-y-6">
-            <div className="card p-6">
-              <p className="section-label">Telemetry</p>
-              <h2 className="section-title mt-2">Current snapshot</h2>
-              <div className="mt-6 divide-y divide-[color:var(--border)]">
-                {[
-                  ['Mode', isLiveMode ? 'Live' : 'Replay'],
-                  ['Selected phase', activePhase.name],
-                  ['Distance from Earth', `${distanceFromEarth.toLocaleString()} km`],
-                  ['Velocity', `${velocity} km/s`],
-                  ['Trajectory state', getTrajectoryLabel(replayHour)],
-                  ['Replay progress', `${Math.round(replayProgress)}%`],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex items-center justify-between gap-4 py-3">
-                    <span className="text-sm text-[color:var(--muted)]">{label}</span>
-                    <span className="font-mono text-sm text-[color:var(--text)]">{value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <h2 className="replay-phase-name">{activePhase.name}</h2>
+          <p className="replay-phase-description">{briefing.summary}</p>
 
-            <div className="card p-6">
-              <p className="section-label">Brief</p>
-              <h2 className="section-title mt-2">{activePhase.name}</h2>
-              <p className="mt-4 text-sm leading-7 text-[color:var(--muted)]">{briefing.summary}</p>
-              <div className="mt-6 space-y-4">
-                <div>
-                  <p className="eyebrow">Why it matters</p>
-                  <p className="mt-1 text-sm text-[color:var(--text)]">{briefing.whyItMatters}</p>
-                </div>
-                <div>
-                  <p className="eyebrow">What comes next</p>
-                  <p className="mt-1 text-sm text-[color:var(--text)]">{briefing.whatNext}</p>
-                </div>
-                <div>
-                  <p className="eyebrow">Crew focus</p>
-                  <p className="mt-1 text-sm text-[color:var(--text)]">{getCrewFocus(replayHour)}</p>
-                </div>
-              </div>
-            </div>
+          <div className={`replay-record-row${recordBroken ? ' replay-record-row--broken' : ''}`}>
+            <span>APOLLO 13</span>
+            <span>400,171 km</span>
           </div>
-        </div>
-      </motion.section>
+          <div className="replay-record-row replay-record-row--current">
+            <span>ARTEMIS II</span>
+            <span>{Math.round(mapDistance).toLocaleString()} km</span>
+          </div>
 
-      <motion.section initial="hidden" animate="show" variants={fadeIn} className="grid gap-6 lg:grid-cols-[0.72fr_1.28fr]">
-        <div className="space-y-6">
-          <div className="card p-6">
-            <p className="section-label">Mission context</p>
-            <h2 className="section-title mt-2">Reference details</h2>
-            <div className="mt-6 space-y-4">
-              {[
-                ['Launch vehicle', mission.spacecraft.rocket],
-                ['Spacecraft', mission.spacecraft.name],
-                ['Launch site', mission.spacecraft.launchSite],
-                ['Splashdown target', mission.spacecraft.splashdownTarget],
-                ['Duration', mission.duration],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <p className="eyebrow">{label}</p>
-                  <p className="mt-1 text-sm font-medium text-[color:var(--text)]">{value}</p>
-                </div>
+          <div className="replay-record-progress">
+            <div
+              className="replay-record-progress-fill"
+              style={{
+                width: `${Math.min(100, recordProgress)}%`,
+                background: recordBroken ? 'var(--go)' : 'var(--accent)',
+              }}
+            />
+          </div>
+        </section>
+
+        <section className="replay-overlay-panel replay-overlay-panel--controls replay-enter-bottom">
+          <div className="panel-header" style={{ marginBottom: 14 }}>
+            <span className="panel-label">Replay Controls</span>
+            <span className="replay-overlay-status">{formatReplayClock(activeHour)}</span>
+          </div>
+
+          <div className="replay-overlay-mode-toggle">
+            <button
+              type="button"
+              className={`replay-overlay-mode-button${isLiveMode ? ' replay-overlay-mode-button--active' : ''}`}
+              onClick={() => {
+                setReplayHour(liveMissionHour)
+                setIsLiveMode(true)
+                setIsPlaying(false)
+              }}
+            >
+              Live
+            </button>
+            <button
+              type="button"
+              className={`replay-overlay-mode-button${!isLiveMode ? ' replay-overlay-mode-button--active' : ''}`}
+              onClick={() => {
+                if (isLiveMode) {
+                  setReplayHour(liveMissionHour)
+                }
+                setIsLiveMode(false)
+              }}
+            >
+              Replay
+            </button>
+          </div>
+
+          <div className="replay-overlay-controls-row">
+            <button
+              type="button"
+              className="replay-play-button"
+              disabled={isLiveMode}
+              onClick={() => setIsPlaying((current) => !current)}
+            >
+              {isPlaying ? 'II' : '>'}
+            </button>
+
+            <div className="replay-speed-selector">
+              {REPLAY_SPEEDS.map((speed) => (
+                <button
+                  key={speed}
+                  type="button"
+                  className={`replay-speed-pill${replaySpeed === speed ? ' replay-speed-pill--active' : ''}`}
+                  onClick={() => setReplaySpeed(speed)}
+                >
+                  {speed}×
+                </button>
               ))}
             </div>
           </div>
 
-          <div className="card p-6">
-            <p className="section-label">Upcoming milestone</p>
-            <h2 className="section-title mt-2">{upcomingEvent ? upcomingEvent.title : 'No upcoming event'}</h2>
-            <p className="mt-4 text-sm leading-7 text-[color:var(--muted)]">
-              {upcomingEvent ? upcomingEvent.detail : 'The replay has reached the end of the planned mission sequence.'}
-            </p>
-          </div>
-        </div>
+          <button
+            type="button"
+            className="replay-jump-live"
+            onClick={() => {
+              setReplayHour(liveMissionHour)
+              setIsLiveMode(true)
+              setIsPlaying(false)
+            }}
+          >
+            Jump Live
+          </button>
 
-        <div className="card p-6 md:p-8">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="section-label">Event log</p>
-              <h2 className="section-title mt-2">Mission events</h2>
-              <p className="section-copy mt-2">
-                The mission moments most relevant to the selected point in time, ordered from newest to oldest.
-              </p>
+          <div className="replay-scrubber-wrap replay-scrubber-wrap--overlay">
+            <input
+              type="range"
+              min={0}
+              max={240}
+              step={0.5}
+              value={replayHour}
+              onChange={(event) => {
+                setIsLiveMode(false)
+                setIsPlaying(false)
+                setReplayHour(Number(event.target.value))
+              }}
+              className="replay-scrubber"
+            />
+          </div>
+
+          <div className="replay-overlay-meta">
+            <span>{isLiveMode ? 'Tracking real Orion position' : getTrajectoryLabel(replayHour)}</span>
+            <span>
+              {telemetryError
+                ? 'Fallback mission profile'
+                : liveSourceLabel || 'Real-time Orion position from JPL Horizons'}
+            </span>
+          </div>
+        </section>
+
+        <section className="replay-overlay-timeline replay-enter-timeline">
+          <MissionTimeline metElapsed={selectedMetElapsed} compact />
+        </section>
+      </div>
+
+      <div className="replay-immersive__details">
+        <div className="replay-detail-grid">
+          <section className="replay-detail-panel">
+            <header className="panel-header">
+              <span className="panel-label">Selected Phase</span>
+              <span className="panel-live">{isLiveMode ? 'Live' : 'Replay'}</span>
+            </header>
+
+            <h2 className="replay-panel-title">{activePhase.name}</h2>
+
+            <div className="replay-progress-copy">
+              <span>Mission Completion</span>
+              <span>{Math.round(replayProgress)}%</span>
             </div>
-            <div className="text-sm text-[color:var(--muted)]">{visibleEvents.length} events visible</div>
-          </div>
+            <div className="mission-progress-track">
+              <div className="mission-progress-fill" style={{ width: `${replayProgress}%` }} />
+            </div>
 
-          <div className="mt-8 space-y-0">
-            {visibleEvents.map((event, index) => (
-              <div key={`${event.hour}-${event.title}`} className="grid grid-cols-[20px_1fr] gap-4">
-                <div className="relative flex justify-center">
-                  <span className="mt-2 h-2.5 w-2.5 rounded-full bg-blue-600" />
-                  {index !== visibleEvents.length - 1 && (
-                    <span className="absolute top-6 h-[calc(100%-8px)] w-px bg-[color:var(--border)]" />
-                  )}
+            <div className="replay-progress-copy">
+              <span>Phase Completion</span>
+              <span>{Math.round(phaseProgress)}%</span>
+            </div>
+            <div className="mission-progress-track">
+              <div className="mission-progress-fill" style={{ width: `${phaseProgress}%`, background: 'var(--text-data)' }} />
+            </div>
+
+            <div className="replay-key-value">
+              <span className="replay-key">Mission Clock</span>
+              <span className="replay-value">{selectedMetElapsed}</span>
+            </div>
+            <div className="replay-key-value">
+              <span className="replay-key">Trajectory State</span>
+              <span className="replay-value">{getTrajectoryLabel(activeHour)}</span>
+            </div>
+            <div className="replay-key-value">
+              <span className="replay-key">Clock Ref</span>
+              <span className="replay-value">{formatReplayClock(activeHour)}</span>
+            </div>
+          </section>
+
+          <section className="replay-detail-panel">
+            <header className="panel-header">
+              <span className="panel-label">Telemetry Snapshot</span>
+              <span className={`replay-overlay-status${telemetryStatus === 'Live' ? ' replay-overlay-status--live' : ''}`}>
+                {telemetryStatus}
+              </span>
+            </header>
+
+            <div className="replay-key-value">
+              <span className="replay-key">Distance</span>
+              <span className="replay-value">{Math.round(mapDistance).toLocaleString()} km</span>
+            </div>
+            <div className="replay-key-value">
+              <span className="replay-key">Velocity</span>
+              <span className="replay-value">{mapVelocity.toFixed(3)} km/s</span>
+            </div>
+            <div className="replay-key-value">
+              <span className="replay-key">From Moon</span>
+              <span className="replay-value">{Math.round(selectedMoonDistance).toLocaleString()} km</span>
+            </div>
+            <div className="replay-key-value">
+              <span className="replay-key">Live Distance</span>
+              <span className="replay-value">{Math.round(liveDistance).toLocaleString()} km</span>
+            </div>
+            <div className="replay-key-value">
+              <span className="replay-key">Live Moon</span>
+              <span className="replay-value">{Math.round(liveMoonDistance).toLocaleString()} km</span>
+            </div>
+            <div className="replay-key-value">
+              <span className="replay-key">Radiation</span>
+              <span className="replay-value">{(liveSpaceWeather?.riskLevel ?? 'nominal').toUpperCase()}</span>
+            </div>
+
+            <p className="replay-brief-copy">
+              {telemetryError
+                ? 'Live telemetry is temporarily unavailable, so this view is grounded in the mission simulation profile.'
+                : liveSourceLabel || 'Telemetry sources will appear here when the current feed is available.'}
+            </p>
+          </section>
+
+          <section className="replay-detail-panel">
+            <header className="panel-header">
+              <span className="panel-label">Phase Brief</span>
+            </header>
+
+            <h2 className="replay-panel-title" style={{ fontSize: 18 }}>
+              {activePhase.name}
+            </h2>
+            <p className="replay-brief-copy">{briefing.summary}</p>
+            <p className="replay-brief-copy">{getCrewFocus(activeHour)}</p>
+            <div className="mission-sidebar-meta">
+              {upcomingEvent ? `NEXT · T+${upcomingEvent.hour}h · ${upcomingEvent.title}` : 'MISSION SEQUENCE COMPLETE'}
+            </div>
+          </section>
+
+          <section className="replay-detail-panel replay-detail-panel--wide">
+            <header className="panel-header">
+              <span className="panel-label">Event Log</span>
+              <span className="replay-overlay-status">{visibleEvents.length} EVENTS</span>
+            </header>
+
+            <div className="replay-event-list">
+              {visibleEvents.map((event) => (
+                <div key={`${event.hour}-${event.title}`} className="replay-event">
+                  <div className="replay-event-title">{event.title}</div>
+                  <div className="replay-event-meta">T+ {event.hour}h</div>
+                  <p className="replay-brief-copy" style={{ marginTop: 6 }}>
+                    {event.detail}
+                  </p>
                 </div>
-                <div className={`pb-6 ${index !== visibleEvents.length - 1 ? 'border-b border-[color:var(--border)]' : ''}`}>
-                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-[color:var(--text)]">{event.title}</p>
-                      <p className="mt-2 text-sm leading-7 text-[color:var(--muted)]">{event.detail}</p>
-                    </div>
-                    <div className="font-mono text-sm text-[color:var(--muted)]">T+ {event.hour}h</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </section>
         </div>
-      </motion.section>
+      </div>
     </div>
   )
 }

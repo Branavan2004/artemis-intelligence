@@ -9,6 +9,9 @@ import { authRouter } from './routes/auth';
 import { missionRouter } from './routes/mission';
 import { newsRouter } from './routes/news';
 import { chatRouter } from './routes/chat';
+import { telemetryRoutes } from './routes/telemetry';
+import dsnRoutes from './routes/dsn';
+import splashdownWeatherRoutes from './routes/splashdownWeather';
 import { errorHandler } from './middleware/errorHandler';
 import { initRedis } from './services/redis';
 import { getMissionUpdate } from './constants/mission';
@@ -17,16 +20,46 @@ dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
+const configuredClientUrl = process.env.CLIENT_URL;
+const allowedOrigins = [
+  configuredClientUrl,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+].filter((origin): origin is string => Boolean(origin));
+
+function isAllowedOrigin(origin: string | undefined) {
+  if (!origin) return true;
+  return allowedOrigins.includes(origin);
+}
 
 export const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin ${origin ?? 'unknown'} not allowed by Socket.IO CORS`));
+    },
     methods: ['GET', 'POST'],
   },
 });
 
 app.use(helmet());
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin ${origin ?? 'unknown'} not allowed by CORS`));
+    },
+    credentials: true,
+  }),
+);
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -39,6 +72,9 @@ app.use('/api/auth', authRouter);
 app.use('/api/mission', missionRouter);
 app.use('/api/news', newsRouter);
 app.use('/api/chat', chatRouter);
+app.use('/api/telemetry', telemetryRoutes);
+app.use('/api/dsn', dsnRoutes);
+app.use('/api/splashdown-weather', splashdownWeatherRoutes);
 
 app.use(errorHandler);
 
