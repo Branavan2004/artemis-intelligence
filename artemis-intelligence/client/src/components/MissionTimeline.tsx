@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react'
+import { metStringToSeconds } from '../hooks/useReplayClock'
 
 interface MissionTimelineProps {
   metElapsed: string
   compact?: boolean
+  onSeek?: (metSeconds: number) => void
 }
 
 type TimelineEventType = 'milestone' | 'system' | 'rest' | 'burn' | 'activity' | 'comms' | 'experiment' | 'critical'
@@ -232,18 +234,6 @@ const TYPE_STYLES: Record<TimelineEventType, { color: string; background: string
   activity: { color: 'var(--go)', background: 'rgba(0,184,122,0.12)', label: 'ACTIVITY' },
 }
 
-function parseMetSeconds(value: string) {
-  if (/^\d{1,3}:\d{2}:\d{2}$/.test(value)) {
-    const [hours, minutes, seconds] = value.split(':').map(Number)
-    return hours * 3600 + minutes * 60 + seconds
-  }
-
-  const hours = Number(value.match(/(\d+)\s*h/i)?.[1] ?? 0)
-  const minutes = Number(value.match(/(\d+)\s*m/i)?.[1] ?? 0)
-  const seconds = Number(value.match(/(\d+)\s*s/i)?.[1] ?? 0)
-  return hours * 3600 + minutes * 60 + seconds
-}
-
 function formatEdtTime(value: string) {
   return `${new Date(value).toLocaleString('en-US', {
     month: 'short',
@@ -259,18 +249,21 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
-export default function MissionTimeline({ metElapsed, compact = false }: MissionTimelineProps) {
+export default function MissionTimeline({ metElapsed, compact = false, onSeek }: MissionTimelineProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const isScrubbingRef = useRef(false)
   const trackPadding = compact ? 16 : 24
   const cardWidth = compact ? 136 : 176
   const cardGap = compact ? 14 : 20
   const trackWidth = trackPadding * 2 + TIMELINE_EVENTS.length * cardWidth + (TIMELINE_EVENTS.length - 1) * cardGap
-  const missionDurationSeconds = parseMetSeconds(TIMELINE_EVENTS[TIMELINE_EVENTS.length - 1]?.met ?? '00:00:00')
-  const metSeconds = clamp(parseMetSeconds(metElapsed), 0, missionDurationSeconds)
+  const missionDurationSeconds = metStringToSeconds(TIMELINE_EVENTS[TIMELINE_EVENTS.length - 1]?.met ?? '00:00:00')
+  const metSeconds = clamp(metStringToSeconds(metElapsed), 0, missionDurationSeconds)
+  const timelineTotalSeconds = 204 * 3600
+  const scrubberFraction = clamp(metStringToSeconds(metElapsed) / timelineTotalSeconds, 0, 1)
 
   let activeIndex = -1
   for (let index = 0; index < TIMELINE_EVENTS.length; index += 1) {
-    if (parseMetSeconds(TIMELINE_EVENTS[index].met) <= metSeconds) {
+    if (metStringToSeconds(TIMELINE_EVENTS[index].met) <= metSeconds) {
       activeIndex = index
     }
   }
@@ -283,23 +276,37 @@ export default function MissionTimeline({ metElapsed, compact = false }: Mission
     if (!container) return
 
     const nextScrollLeft = clamp(nowLeft - container.clientWidth / 2, 0, trackWidth - container.clientWidth)
+    if (compact) {
+      container.scrollLeft = nextScrollLeft
+      return
+    }
+
     container.scrollTo({ left: nextScrollLeft, behavior: 'smooth' })
   }, [nowLeft, trackWidth])
 
-  const headerPadding = compact ? '8px 16px 6px' : '14px 20px 10px'
-  const headerSecondaryMargin = compact ? 4 : 6
+  const headerPadding = compact ? '10px 16px 8px' : '14px 20px 10px'
+  const headerSecondaryMargin = compact ? 3 : 6
   const headerValueSize = compact ? 9 : 10
   const headerMetaSize = compact ? 9 : 10
-  const trackMinHeight = compact ? 64 : 118
-  const trackPaddingValue = compact ? '8px 16px 10px' : '14px 24px 16px'
-  const axisTop = compact ? 38 : 62
-  const nowIndicatorTop = compact ? 14 : 10
-  const nowIndicatorBottom = compact ? 10 : 14
+  const trackMinHeight = compact ? 84 : 118
+  const trackPaddingValue = compact ? '10px 16px 14px' : '14px 24px 16px'
+  const axisTop = compact ? 44 : 62
+  const nowIndicatorTop = compact ? 18 : 10
+  const nowIndicatorBottom = compact ? 14 : 14
   const dotSize = compact ? 6 : 8
-  const dotTop = compact ? 6 : 8
-  const markerHeight = compact ? 18 : 26
+  const dotTop = compact ? 10 : 8
+  const markerHeight = compact ? 24 : 26
   const cardLabelSize = compact ? 10 : 11
   const cardMetaSize = compact ? 9 : 10
+  const scrubberPadding = compact ? '8px 16px 6px' : '10px 20px 8px'
+  const scrubberThumbSize = compact ? 10 : 12
+
+  const seekToClientX = (clientX: number, target: HTMLDivElement) => {
+    if (!onSeek) return
+    const rect = target.getBoundingClientRect()
+    const clickFrac = clamp((clientX - rect.left) / rect.width, 0, 1)
+    onSeek(Math.floor(clickFrac * timelineTotalSeconds))
+  }
 
   return (
     <section
@@ -335,6 +342,71 @@ export default function MissionTimeline({ metElapsed, compact = false }: Mission
           <div style={{ marginTop: headerSecondaryMargin, fontSize: headerMetaSize, color: 'var(--text-3)' }}>
             {activeEvent ? formatEdtTime(activeEvent.time) : 'Awaiting first event'}
           </div>
+        </div>
+      </div>
+
+      <div style={{ padding: scrubberPadding }}>
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: 6,
+            background: 'var(--border)',
+            cursor: onSeek ? 'pointer' : 'default',
+            touchAction: 'none',
+          }}
+          onPointerDown={(event) => {
+            if (!onSeek) return
+            isScrubbingRef.current = true
+            event.currentTarget.setPointerCapture(event.pointerId)
+            seekToClientX(event.clientX, event.currentTarget)
+          }}
+          onPointerMove={(event) => {
+            if (!onSeek || !isScrubbingRef.current) return
+            seekToClientX(event.clientX, event.currentTarget)
+          }}
+          onPointerUp={(event) => {
+            if (!onSeek) return
+            isScrubbingRef.current = false
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId)
+            }
+          }}
+          onPointerCancel={(event) => {
+            isScrubbingRef.current = false
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId)
+            }
+          }}
+          onLostPointerCapture={() => {
+            isScrubbingRef.current = false
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: `${scrubberFraction * 100}%`,
+              height: '100%',
+              background: 'var(--accent)',
+              transition: 'width 0.1s linear',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: `${scrubberFraction * 100}%`,
+              transform: 'translate(-50%, -50%)',
+              width: scrubberThumbSize,
+              height: scrubberThumbSize,
+              borderRadius: '50%',
+              background: 'var(--accent)',
+              border: '2px solid var(--text-1)',
+              cursor: onSeek ? 'grab' : 'default',
+            }}
+          />
         </div>
       </div>
 

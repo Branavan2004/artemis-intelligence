@@ -423,34 +423,39 @@ export default function DSNTracker() {
         </div>
 
         <div className="p-6 md:p-8">
-          <div className="flex items-end justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="section-label">Station states</p>
               <h3 className="mt-2 text-xl font-semibold tracking-[-0.02em] text-[color:var(--text)]">Ground network</h3>
             </div>
-            <p className="text-sm text-[color:var(--muted)]">{stations.length} stations monitored</p>
+            <p className="pt-1 text-sm text-[color:var(--muted)]">{stations.length} stations monitored</p>
           </div>
 
-          <div className="mt-5 grid gap-3 xl:grid-cols-3">
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {stations.map((station) => {
               const stationBadge = getStationBadge(station)
 
               return (
-                <div key={station.id} className="card-muted p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
+                <div key={station.id} className="card-muted h-full p-4">
+                  <div className="flex h-full flex-col gap-3">
+                    <div className="min-w-0">
                       <p className="text-sm font-medium text-[color:var(--text)]">{station.friendlyName}</p>
-                      <p className="mt-1 text-xs text-[color:var(--muted)]">
+                      <p className="mt-1 font-mono text-xs tracking-[0.06em] text-[color:var(--muted)]">
                         {station.location.lat.toFixed(2)}°, {station.location.lng.toFixed(2)}°
                       </p>
                     </div>
-                    <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium ${stationBadge.badgeClass}`}>
-                      <span className={`h-2 w-2 rounded-full ${stationBadge.dot}`} />
-                      {stationBadge.label}
-                    </span>
-                  </div>
 
-                  <p className="mt-4 text-sm text-[color:var(--text)]">{stationBadge.detail}</p>
+                    <div>
+                      <span
+                        className={`inline-flex max-w-full items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium ${stationBadge.badgeClass}`}
+                      >
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${stationBadge.dot}`} />
+                        {stationBadge.label}
+                      </span>
+                    </div>
+
+                    <p className="text-sm leading-6 text-[color:var(--muted)]">{stationBadge.detail}</p>
+                  </div>
                 </div>
               )
             })}

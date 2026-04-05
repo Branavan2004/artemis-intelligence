@@ -12,7 +12,7 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --nav-height: 52px;
   --page-width: 1440px;
-  --replay-timeline-height: 136px;
+  --replay-timeline-height: 176px;
 }
 
 :root,
@@ -1274,6 +1274,7 @@ canvas {
   right: 0;
   bottom: 0;
   height: var(--replay-timeline-height);
+  overflow: hidden;
   border-top: 0.5px solid var(--border);
   background: rgba(6, 8, 15, 0.88);
   backdrop-filter: blur(16px);
@@ -2521,7 +2522,7 @@ canvas {
 
 @media (max-width: 720px) {
   :root {
-    --replay-timeline-height: 124px;
+    --replay-timeline-height: 160px;
   }
 
   .page-shell,
@@ -2616,7 +2617,7 @@ canvas {
 
 @media (max-width: 560px) {
   :root {
-    --replay-timeline-height: 132px;
+    --replay-timeline-height: 152px;
   }
 
   .replay-overlay-panel--hud,

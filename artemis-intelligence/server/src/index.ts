@@ -5,8 +5,10 @@ import morgan from 'morgan';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import dotenv from 'dotenv';
+import { authRouter } from './routes/auth';
 import { missionRouter } from './routes/mission';
 import { newsRouter } from './routes/news';
+import { chatRouter } from './routes/chat';
 import { telemetryRoutes } from './routes/telemetry';
 import dsnRoutes from './routes/dsn';
 import splashdownWeatherRoutes from './routes/splashdownWeather';
@@ -66,8 +68,10 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), mission: 'Artemis II 🚀' });
 });
 
+app.use('/api/auth', authRouter);
 app.use('/api/mission', missionRouter);
 app.use('/api/news', newsRouter);
+app.use('/api/chat', chatRouter);
 app.use('/api/telemetry', telemetryRoutes);
 app.use('/api/dsn', dsnRoutes);
 app.use('/api/splashdown-weather', splashdownWeatherRoutes);

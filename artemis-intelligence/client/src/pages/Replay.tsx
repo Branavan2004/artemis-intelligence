@@ -1,22 +1,19 @@
 import { useEffect, useState } from 'react'
 import MissionTimeline from '../components/MissionTimeline'
 import TelemetryMap3D from '../components/TelemetryMap3D'
+import { LAUNCH_EPOCH_MS, type ReplaySpeed, useReplayClock } from '../hooks/useReplayClock'
 import { type TelemetryPayload, useTelemetry } from '../hooks/useTelemetry'
 import { api } from '../lib/api'
-import { formatMissionMetFromHours, formatMissionMetFromTimestamp, getMissionHoursElapsed } from '../lib/mission'
 import {
   MissionPhaseWindow,
-  clampMissionHour,
   getCrewFocus,
-  getDistanceFromEarthKm,
   getLatestReplayEvents,
   getMissionBriefing,
   getPhaseCompletion,
   getReplayPhase,
   getReplayProgress,
-  getUpcomingReplayEvent,
   getTrajectoryLabel,
-  getVelocityKmS,
+  getUpcomingReplayEvent,
 } from '../lib/replay'
 
 interface MissionData {
@@ -31,8 +28,7 @@ interface MissionData {
 }
 
 const APOLLO_13_RECORD_KM = 400171
-const REPLAY_SPEEDS = [0.5, 1, 2, 4] as const
-const REPLAY_STEP_HOURS = 0.25
+const SPEEDS: ReplaySpeed[] = [1, 2, 3, 4]
 
 function formatReplayClock(hour: number) {
   const wholeHours = Math.floor(hour)
@@ -46,43 +42,23 @@ function getLiveSourceLabel(telemetry: TelemetryPayload | null) {
 
 export default function Replay() {
   const [mission, setMission] = useState<MissionData | null>(null)
-  const [replayHour, setReplayHour] = useState(0)
-  const [isLiveMode, setIsLiveMode] = useState(true)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [replaySpeed, setReplaySpeed] = useState<(typeof REPLAY_SPEEDS)[number]>(1)
   const { data: telemetry, loading: telemetryLoading, error: telemetryError } = useTelemetry()
+  const {
+    metString,
+    metSeconds,
+    speed,
+    setSpeed,
+    isPlaying,
+    setIsPlaying,
+    seekToSeconds,
+    distanceFromEarthKm,
+    speedKmS,
+    trajectoryFraction,
+  } = useReplayClock()
 
   useEffect(() => {
     api.get('/api/mission').then((response) => setMission(response.data))
   }, [])
-
-  useEffect(() => {
-    if (!mission || !isLiveMode) return
-
-    const syncToLive = () => {
-      setReplayHour(clampMissionHour(getMissionHoursElapsed(mission.launchDate)))
-    }
-
-    syncToLive()
-    const interval = window.setInterval(syncToLive, 1000)
-    return () => window.clearInterval(interval)
-  }, [mission, isLiveMode])
-
-  useEffect(() => {
-    if (isLiveMode || !isPlaying) return
-
-    const interval = window.setInterval(() => {
-      setReplayHour((current) => Math.min(current + REPLAY_STEP_HOURS * replaySpeed, 240))
-    }, 200)
-
-    return () => window.clearInterval(interval)
-  }, [isLiveMode, isPlaying, replaySpeed])
-
-  useEffect(() => {
-    if (replayHour >= 240 && isPlaying) {
-      setIsPlaying(false)
-    }
-  }, [isPlaying, replayHour])
 
   if (!mission) {
     return (
@@ -106,41 +82,44 @@ export default function Replay() {
     )
   }
 
-  const liveMissionHour = clampMissionHour(getMissionHoursElapsed(mission.launchDate))
-  const liveTrajectory = telemetry?.trajectory
-  const liveSpaceWeather = telemetry?.spaceWeather
-  const liveSourceLabel = getLiveSourceLabel(telemetry)
-  const liveMetElapsed = formatMissionMetFromTimestamp(
-    mission.launchDate,
-    liveTrajectory?.timestamp ?? liveSpaceWeather?.timestamp,
-  )
-  const liveDistance = liveTrajectory?.distanceFromEarthKm ?? getDistanceFromEarthKm(liveMissionHour)
-  const liveVelocity = liveTrajectory?.speedKmS ?? getVelocityKmS(liveMissionHour)
-  const activeHour = isLiveMode ? liveMissionHour : replayHour
-  const selectedMetElapsed = isLiveMode ? liveMetElapsed : formatMissionMetFromHours(replayHour)
-  const mapDistance = isLiveMode ? liveDistance : getDistanceFromEarthKm(replayHour)
-  const mapVelocity = isLiveMode ? liveVelocity : getVelocityKmS(replayHour)
+  const activeHour = metSeconds / 3600
   const activePhase = getReplayPhase(mission.phases, activeHour)
   const briefing = getMissionBriefing(activePhase.name)
   const visibleEvents = getLatestReplayEvents(activeHour)
   const upcomingEvent = getUpcomingReplayEvent(activeHour)
   const replayProgress = getReplayProgress(activeHour)
   const phaseProgress = getPhaseCompletion(activePhase, activeHour)
-  const signalDelaySeconds = mapDistance / 299792
-  const selectedMoonDistance = Math.abs(384400 - mapDistance)
+  const signalDelaySeconds = distanceFromEarthKm / 299792
+  const selectedMoonDistance = Math.abs(384400 - distanceFromEarthKm)
+  const recordBroken = distanceFromEarthKm >= APOLLO_13_RECORD_KM
+  const recordProgress = Math.min(100, (distanceFromEarthKm / APOLLO_13_RECORD_KM) * 100)
+
+  const liveTrajectory = telemetry?.trajectory
+  const liveSpaceWeather = telemetry?.spaceWeather
+  const liveSourceLabel = getLiveSourceLabel(telemetry)
+  const liveDistance = liveTrajectory?.distanceFromEarthKm ?? distanceFromEarthKm
   const liveMoonDistance = liveTrajectory?.distanceFromMoonKm ?? Math.abs(384400 - liveDistance)
-  const recordBroken = mapDistance >= APOLLO_13_RECORD_KM
-  const recordProgress = Math.min(100, (mapDistance / APOLLO_13_RECORD_KM) * 100)
-  const telemetryStatus = telemetryLoading ? 'Syncing' : telemetryError ? 'Fallback' : isLiveMode ? 'Live' : 'Replay'
+  const telemetryStatus = telemetryLoading ? 'Syncing' : telemetryError ? 'Fallback' : 'Reference'
+
+  const simDate = new Date(LAUNCH_EPOCH_MS + metSeconds * 1000)
+  const simulatedDateLabel = simDate.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/New_York',
+    timeZoneName: 'short',
+  })
 
   return (
     <div className="replay-immersive" data-mission-name={mission.name}>
       <div className="replay-immersive__stage">
         <div className="replay-immersive__map">
           <TelemetryMap3D
-            distanceFromEarthKm={mapDistance}
-            speedKmS={mapVelocity}
-            metElapsed={selectedMetElapsed}
+            metElapsed={metString}
+            distanceFromEarthKm={distanceFromEarthKm}
+            speedKmS={speedKmS}
+            trajectoryFraction={trajectoryFraction}
             riskLevel={liveSpaceWeather?.riskLevel ?? 'nominal'}
             fullscreen
           />
@@ -150,9 +129,9 @@ export default function Replay() {
           <div className="replay-overlay-heading">Orion Telemetry</div>
 
           {[
-            ['MET', selectedMetElapsed],
-            ['DISTANCE', `${Math.round(mapDistance).toLocaleString()} km`],
-            ['VELOCITY', `${mapVelocity.toFixed(3)} km/s`],
+            ['MET', metString],
+            ['DISTANCE', `${Math.round(distanceFromEarthKm).toLocaleString()} km`],
+            ['VELOCITY', `${speedKmS.toFixed(3)} km/s`],
             ['SIGNAL', `${signalDelaySeconds.toFixed(2)}s delay`],
           ].map(([label, value]) => (
             <div key={label} className="replay-telemetry-row">
@@ -165,8 +144,8 @@ export default function Replay() {
         <section className="replay-overlay-panel replay-overlay-panel--phase replay-enter-right">
           <div className="panel-header" style={{ marginBottom: 12 }}>
             <span className="panel-label">Mission Phase</span>
-            <span className={`replay-overlay-status${telemetryStatus === 'Live' ? ' replay-overlay-status--live' : ''}`}>
-              {telemetryStatus}
+            <span className={isPlaying ? 'panel-live' : 'replay-overlay-status'}>
+              {isPlaying ? `${speed}×` : 'Paused'}
             </span>
           </div>
 
@@ -179,7 +158,7 @@ export default function Replay() {
           </div>
           <div className="replay-record-row replay-record-row--current">
             <span>ARTEMIS II</span>
-            <span>{Math.round(mapDistance).toLocaleString()} km</span>
+            <span>{Math.round(distanceFromEarthKm).toLocaleString()} km</span>
           </div>
 
           <div className="replay-record-progress">
@@ -196,99 +175,62 @@ export default function Replay() {
         <section className="replay-overlay-panel replay-overlay-panel--controls replay-enter-bottom">
           <div className="panel-header" style={{ marginBottom: 14 }}>
             <span className="panel-label">Replay Controls</span>
-            <span className="replay-overlay-status">{formatReplayClock(activeHour)}</span>
-          </div>
-
-          <div className="replay-overlay-mode-toggle">
-            <button
-              type="button"
-              className={`replay-overlay-mode-button${isLiveMode ? ' replay-overlay-mode-button--active' : ''}`}
-              onClick={() => {
-                setReplayHour(liveMissionHour)
-                setIsLiveMode(true)
-                setIsPlaying(false)
-              }}
-            >
-              Live
-            </button>
-            <button
-              type="button"
-              className={`replay-overlay-mode-button${!isLiveMode ? ' replay-overlay-mode-button--active' : ''}`}
-              onClick={() => {
-                if (isLiveMode) {
-                  setReplayHour(liveMissionHour)
-                }
-                setIsLiveMode(false)
-              }}
-            >
-              Replay
-            </button>
+            <span className="replay-overlay-status">MET {metString}</span>
           </div>
 
           <div className="replay-overlay-controls-row">
-            <button
-              type="button"
-              className="replay-play-button"
-              disabled={isLiveMode}
-              onClick={() => setIsPlaying((current) => !current)}
-            >
-              {isPlaying ? 'II' : '>'}
+            <button type="button" className="replay-play-button" onClick={() => setIsPlaying((playing) => !playing)}>
+              {isPlaying ? '⏸' : '▶'}
             </button>
 
             <div className="replay-speed-selector">
-              {REPLAY_SPEEDS.map((speed) => (
+              {SPEEDS.map((nextSpeed) => (
                 <button
-                  key={speed}
+                  key={nextSpeed}
                   type="button"
-                  className={`replay-speed-pill${replaySpeed === speed ? ' replay-speed-pill--active' : ''}`}
-                  onClick={() => setReplaySpeed(speed)}
+                  className={`replay-speed-pill${speed === nextSpeed ? ' replay-speed-pill--active' : ''}`}
+                  onClick={() => {
+                    setSpeed(nextSpeed)
+                    setIsPlaying(true)
+                  }}
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    padding: '4px 10px',
+                    background: speed === nextSpeed ? 'var(--accent-dim)' : 'transparent',
+                    border: `0.5px solid ${speed === nextSpeed ? 'var(--accent)' : 'var(--border-2)'}`,
+                    color: speed === nextSpeed ? 'var(--accent-hi)' : 'var(--text-3)',
+                    cursor: 'pointer',
+                    borderRadius: 2,
+                    transition: 'all 120ms var(--ease-out)',
+                  }}
                 >
-                  {speed}×
+                  {nextSpeed}×
                 </button>
               ))}
             </div>
           </div>
 
-          <button
-            type="button"
-            className="replay-jump-live"
-            onClick={() => {
-              setReplayHour(liveMissionHour)
-              setIsLiveMode(true)
-              setIsPlaying(false)
+          <div
+            style={{
+              marginTop: 8,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 9,
+              color: 'var(--text-3)',
+              textAlign: 'center',
             }}
           >
-            Jump Live
-          </button>
-
-          <div className="replay-scrubber-wrap replay-scrubber-wrap--overlay">
-            <input
-              type="range"
-              min={0}
-              max={240}
-              step={0.5}
-              value={replayHour}
-              onChange={(event) => {
-                setIsLiveMode(false)
-                setIsPlaying(false)
-                setReplayHour(Number(event.target.value))
-              }}
-              className="replay-scrubber"
-            />
+            {simulatedDateLabel}
           </div>
 
           <div className="replay-overlay-meta">
-            <span>{isLiveMode ? 'Tracking real Orion position' : getTrajectoryLabel(replayHour)}</span>
-            <span>
-              {telemetryError
-                ? 'Fallback mission profile'
-                : liveSourceLabel || 'Real-time Orion position from JPL Horizons'}
-            </span>
+            <span>{isPlaying ? `Unified replay clock running at ${speed}×` : 'Unified replay clock paused'}</span>
+            <span>{getTrajectoryLabel(activeHour)}</span>
           </div>
         </section>
 
         <section className="replay-overlay-timeline replay-enter-timeline">
-          <MissionTimeline metElapsed={selectedMetElapsed} compact />
+          <MissionTimeline metElapsed={metString} onSeek={seekToSeconds} compact />
         </section>
       </div>
 
@@ -297,7 +239,9 @@ export default function Replay() {
           <section className="replay-detail-panel">
             <header className="panel-header">
               <span className="panel-label">Selected Phase</span>
-              <span className="panel-live">{isLiveMode ? 'Live' : 'Replay'}</span>
+              <span className={isPlaying ? 'panel-live' : 'replay-overlay-status'}>
+                {isPlaying ? `${speed}×` : 'Paused'}
+              </span>
             </header>
 
             <h2 className="replay-panel-title">{activePhase.name}</h2>
@@ -320,7 +264,7 @@ export default function Replay() {
 
             <div className="replay-key-value">
               <span className="replay-key">Mission Clock</span>
-              <span className="replay-value">{selectedMetElapsed}</span>
+              <span className="replay-value">{metString}</span>
             </div>
             <div className="replay-key-value">
               <span className="replay-key">Trajectory State</span>
@@ -335,18 +279,18 @@ export default function Replay() {
           <section className="replay-detail-panel">
             <header className="panel-header">
               <span className="panel-label">Telemetry Snapshot</span>
-              <span className={`replay-overlay-status${telemetryStatus === 'Live' ? ' replay-overlay-status--live' : ''}`}>
+              <span className={`replay-overlay-status${telemetryStatus === 'Reference' ? ' replay-overlay-status--live' : ''}`}>
                 {telemetryStatus}
               </span>
             </header>
 
             <div className="replay-key-value">
               <span className="replay-key">Distance</span>
-              <span className="replay-value">{Math.round(mapDistance).toLocaleString()} km</span>
+              <span className="replay-value">{Math.round(distanceFromEarthKm).toLocaleString()} km</span>
             </div>
             <div className="replay-key-value">
               <span className="replay-key">Velocity</span>
-              <span className="replay-value">{mapVelocity.toFixed(3)} km/s</span>
+              <span className="replay-value">{speedKmS.toFixed(3)} km/s</span>
             </div>
             <div className="replay-key-value">
               <span className="replay-key">From Moon</span>
@@ -367,7 +311,7 @@ export default function Replay() {
 
             <p className="replay-brief-copy">
               {telemetryError
-                ? 'Live telemetry is temporarily unavailable, so this view is grounded in the mission simulation profile.'
+                ? 'Telemetry reference data is temporarily unavailable, but the shared replay clock remains active.'
                 : liveSourceLabel || 'Telemetry sources will appear here when the current feed is available.'}
             </p>
           </section>
