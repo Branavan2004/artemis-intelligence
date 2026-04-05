@@ -1,9 +1,25 @@
 node_modules/
+
+# ── Environment files — NEVER commit real secrets ─────────────────────────────
 .env
+.env.local
+.env.*.local
+server/.env
+server/.env.local
+client/.env
+client/.env.local
+
+# ── Build outputs ──────────────────────────────────────────────────────────────
 dist/
 build/
+
+# ── Logs ───────────────────────────────────────────────────────────────────────
 *.log
+
+# ── OS ─────────────────────────────────────────────────────────────────────────
 .DS_Store
+
+# ── Dependencies ───────────────────────────────────────────────────────────────
 client/node_modules/
 server/node_modules/
 server/prisma/migrations/*.db

@@ -307,7 +307,7 @@ const dsnRoutes = Router()
 dsnRoutes.get('/', async (_req: Request, res: Response) => {
   try {
     const redis = getRedis()
-    const cached = await redis.get(DSN_CACHE_KEY)
+    const cached = redis ? await redis.get(DSN_CACHE_KEY) : null
 
     if (cached) {
       res.json(JSON.parse(cached) as DSNPayload)
@@ -316,7 +316,10 @@ dsnRoutes.get('/', async (_req: Request, res: Response) => {
 
     const payload = await fetchDsnPayload()
 
-    await redis.setex(DSN_CACHE_KEY, 8, JSON.stringify(payload))
+    if (redis) {
+      await redis.setex(DSN_CACHE_KEY, 8, JSON.stringify(payload))
+    }
+
     res.json(payload)
   } catch (error) {
     console.error('DSN route failed:', error)

@@ -347,8 +347,54 @@ export default function DSNTracker() {
       </div>
 
       <div className="grid xl:grid-cols-[minmax(0,1.6fr)_390px]">
-        <div className="border-b border-[color:var(--border)] bg-[#050A14] p-4 md:p-6 xl:border-b-0 xl:border-r xl:p-8">
+        <div className="flex flex-col border-b border-[color:var(--border)] bg-[#050A14] p-4 md:p-6 xl:border-b-0 xl:border-r xl:p-8">
           {renderMap(stations, activeStations)}
+
+          <div className="mt-10 border-t border-slate-800/60 pt-6">
+            <h4 className="mb-4 font-mono text-[11px] uppercase tracking-[0.2em] text-white/50">
+              Signal Telemetry
+            </h4>
+            <div className="flex flex-col gap-2">
+              {stations.map((station) => {
+                const isActive = station.isActive
+                const tone = isActive ? 'text-emerald-400' : 'text-slate-500'
+                const bgTone = isActive ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-slate-800/30 border-slate-700/50'
+                
+                const freq = station.activeDish?.downlink?.frequencyMhz || station.activeDish?.uplink?.frequencyMhz || 0
+                const rate = station.activeDish?.downlink?.dataRateBps || station.activeDish?.uplink?.dataRateBps || 0
+                const rateKbps = (rate / 1000).toFixed(1)
+                
+                const dishName = station.activeDish?.name || ''
+                const is70m = ['14', '43', '63'].some((id) => dishName.includes(id))
+                const dishSize = station.activeDish ? (is70m ? '70M' : '34M') : '—'
+
+                return (
+                  <div key={station.id} className={`flex items-center justify-between rounded border px-4 py-3 font-mono text-xs ${bgTone}`}>
+                    <div className="flex flex-[1.2] items-center gap-2 min-w-0">
+                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                      <span className={`truncate uppercase tracking-wider ${tone}`}>{station.friendlyName}</span>
+                    </div>
+                    
+                    <div className={`flex-1 tracking-wider ${tone}`}>
+                      {isActive ? 'ACTIVE' : 'STANDBY'}
+                    </div>
+
+                    <div className="flex-1 text-slate-300">
+                      {isActive && freq > 0 ? `${freq.toFixed(2)} MHz` : '—'}
+                    </div>
+
+                    <div className="flex-1 text-slate-300">
+                      {isActive && rate > 0 ? `${rateKbps} kbps` : '—'}
+                    </div>
+
+                    <div className="flex-[0.8] text-right text-slate-400">
+                      {dishSize}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
 
         <div className="bg-[color:var(--surface)] p-6 md:p-8">
@@ -423,34 +469,39 @@ export default function DSNTracker() {
         </div>
 
         <div className="p-6 md:p-8">
-          <div className="flex items-end justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="section-label">Station states</p>
               <h3 className="mt-2 text-xl font-semibold tracking-[-0.02em] text-[color:var(--text)]">Ground network</h3>
             </div>
-            <p className="text-sm text-[color:var(--muted)]">{stations.length} stations monitored</p>
+            <p className="pt-1 text-sm text-[color:var(--muted)]">{stations.length} stations monitored</p>
           </div>
 
-          <div className="mt-5 grid gap-3 xl:grid-cols-3">
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {stations.map((station) => {
               const stationBadge = getStationBadge(station)
 
               return (
-                <div key={station.id} className="card-muted p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
+                <div key={station.id} className="card-muted h-full p-4">
+                  <div className="flex h-full flex-col gap-3">
+                    <div className="min-w-0">
                       <p className="text-sm font-medium text-[color:var(--text)]">{station.friendlyName}</p>
-                      <p className="mt-1 text-xs text-[color:var(--muted)]">
+                      <p className="mt-1 font-mono text-xs tracking-[0.06em] text-[color:var(--muted)]">
                         {station.location.lat.toFixed(2)}°, {station.location.lng.toFixed(2)}°
                       </p>
                     </div>
-                    <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium ${stationBadge.badgeClass}`}>
-                      <span className={`h-2 w-2 rounded-full ${stationBadge.dot}`} />
-                      {stationBadge.label}
-                    </span>
-                  </div>
 
-                  <p className="mt-4 text-sm text-[color:var(--text)]">{stationBadge.detail}</p>
+                    <div>
+                      <span
+                        className={`inline-flex max-w-full items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium ${stationBadge.badgeClass}`}
+                      >
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${stationBadge.dot}`} />
+                        {stationBadge.label}
+                      </span>
+                    </div>
+
+                    <p className="text-sm leading-6 text-[color:var(--muted)]">{stationBadge.detail}</p>
+                  </div>
                 </div>
               )
             })}

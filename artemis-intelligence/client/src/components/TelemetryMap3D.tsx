@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { metStringToSeconds } from '../hooks/useReplayClock'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PROPS
@@ -8,6 +9,7 @@ interface TelemetryMap3DProps {
   distanceFromEarthKm?: number
   speedKmS?: number
   metElapsed?: string
+  trajectoryFraction?: number
   riskLevel?: 'nominal' | 'elevated' | 'severe'
   heightPx?: number
   fullscreen?: boolean
@@ -23,24 +25,44 @@ const ER       = 1                      // Earth radius
 const MOON_R   = ER * 0.2724            // Moon radius (1,737 km)
 const KM       = 1 / 6371               // 1 km in scene units
 const MOON_D   = 384400 * KM            // Moon orbital distance (~60.3 SU)
+const ORION_MOON_DIST = 60.27
 const STAR_MIN = MOON_D * 8
 const STAR_MAX = MOON_D * 20
+const ORION_TRAJECTORY_TOTAL_S = 204 * 3600
+const TLI_FRAC = 25 / 204
+const ORION_PEAK_TRAJECTORY_FRAC = TLI_FRAC + (1 - TLI_FRAC) * 0.5
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // UTILITIES
 // ═══════════════════════════════════════════════════════════════════════════════
-const parseMETtoSeconds = parseMET
-
-function parseMET(met: string): number {
-  const p = met.split(':').map(Number)
-  if (p.length === 4) return p[0] * 86400 + p[1] * 3600 + p[2] * 60 + p[3]
-  if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2]
-  return 0
-}
-
 function easeInOutCubic(t: number): number {
   t = Math.min(1, Math.max(0, t))
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+}
+
+function computeTrajectoryFraction(met: string): number {
+  return Math.min(Math.max(metStringToSeconds(met) / ORION_TRAJECTORY_TOTAL_S, 0), 1)
+}
+
+function getOrionArcPosition(frac: number): THREE.Vector3 {
+  const clampedFrac = Math.min(Math.max(frac, 0), 1)
+
+  let orionDist: number
+  if (clampedFrac < TLI_FRAC) {
+    orionDist = (400 + (10000 - 400) * (clampedFrac / TLI_FRAC)) / 6371
+  } else {
+    const arcFrac = (clampedFrac - TLI_FRAC) / (1 - TLI_FRAC)
+    orionDist = (400 + (406773 - 400) * Math.sin(arcFrac * Math.PI)) / 6371
+  }
+
+  const angle = clampedFrac * Math.PI * 1.95 - 0.1
+  const y = ORION_MOON_DIST * 0.07 * Math.sin(clampedFrac * Math.PI)
+
+  return new THREE.Vector3(
+    Math.cos(angle) * orionDist,
+    y,
+    Math.sin(angle) * orionDist,
+  )
 }
 
 // Load texture with canvas fallback so scene never goes black
@@ -89,6 +111,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
   distanceFromEarthKm = 380000,
   speedKmS            = 1.0,
   metElapsed          = '00:00:00',
+  trajectoryFraction,
   riskLevel           = 'nominal',
   heightPx            = 560,
   fullscreen          = false,
@@ -121,19 +144,17 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
   // World positions (set during setup, read by focus fn)
   const moonWorldPos   = useRef(new THREE.Vector3())
   const orionWorldPos  = useRef(new THREE.Vector3())
+  const focusRef       = useRef<FocusTarget>('earth')
+  const trajectoryFractionRef = useRef<number | undefined>(trajectoryFraction)
 
   // Focus fn stored in ref so buttons can call it after setup
   const focusFn = useRef<(t: FocusTarget) => void>(() => {})
 
   // Prop refs — readable inside the animation loop without re-init
-  const distRef  = useRef(distanceFromEarthKm)
-  const speedRef = useRef(speedKmS)
   const metRef   = useRef(metElapsed)
-  const riskRef  = useRef(riskLevel)
-  useEffect(() => { distRef.current  = distanceFromEarthKm }, [distanceFromEarthKm])
-  useEffect(() => { speedRef.current = speedKmS            }, [speedKmS])
+  useEffect(() => { trajectoryFractionRef.current = trajectoryFraction }, [trajectoryFraction])
   useEffect(() => { metRef.current   = metElapsed          }, [metElapsed])
-  useEffect(() => { riskRef.current  = riskLevel           }, [riskLevel])
+  useEffect(() => { focusRef.current = focus }, [focus])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -297,14 +318,8 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
     scene.add(eLabel)
 
     // ── Moon ──────────────────────────────────────────────────────────────────
-    // Moon sits at the arc's peak (f=0.5) so it's visually ON the trajectory
-    const MOON_ANGLE = 0.5 * Math.PI * 1.92 - 0.08   // matches arc formula at f=0.5
-    const MOON_PEAK_D = MOON_D * 1.10                  // matches arc formula at f=0.5
-    const moonPos = new THREE.Vector3(
-      Math.cos(MOON_ANGLE) * MOON_PEAK_D,
-      MOON_D * 0.065,                                  // matches arc y at f=0.5
-      Math.sin(MOON_ANGLE) * MOON_PEAK_D,
-    )
+    // Keep the Moon aligned with the peak of Orion's free-return arc.
+    const moonPos = getOrionArcPosition(ORION_PEAK_TRAJECTORY_FRAC)
     moonWorldPos.current.copy(moonPos)
 
     const moonMat = new THREE.MeshPhongMaterial({
@@ -328,55 +343,15 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
     scene.add(mLabel)
 
     // ── Artemis II shuttle position ────────────────────────────────────────────
-    // NASA flight dynamics: 380,000 km = 98.9% of Moon distance (384,400 km)
-    // The shuttle is in lunar flyby — place it at f=0.495 on the arc
-    // (just before the arc peak at f=0.5 where Moon sits)
-
-    const MOON_DIST_KM   = 384400
-    const missionRatio   = Math.min(distanceFromEarthKm / MOON_DIST_KM, 1.0)  // 0.989
-
-    // Map distance ratio to arc parameter f:
-    // - 0 km from Earth  → f = 0    (launch)
-    // - 384,400 km       → f = 0.5  (Moon, arc peak)
-    // - back to 0 km     → f = 1.0  (splashdown)
-    // Use MET to determine leg (outbound vs return)
-    const metSec         = parseMET(metElapsed)
-    const isReturnLeg    = metSec > 432000  // >5 days = return leg
-
-    // f maps linearly to distance on each leg:
-    // Outbound: f = 0 → 0.5 as distance goes 0 → Moon
-    // Return:   f = 0.5 → 1.0 as distance goes Moon → 0
-    const SHUTTLE_F = isReturnLeg
-      ? 0.5 + (1.0 - missionRatio) * 0.5   // return: f from 0.5→1 as dist drops
-      : missionRatio * 0.5                  // outbound: f from 0→0.5 as dist rises
-
-    // Now compute position ON THE ARC using the SAME formula as the arc geometry
-    const arcDist  = ER * 1.25 + (MOON_D * 1.10 - ER * 1.25) * Math.sin(SHUTTLE_F * Math.PI)
-    const arcAngle = SHUTTLE_F * Math.PI * 1.92 - 0.08
-    const arcY     = MOON_D * 0.065 * Math.sin(SHUTTLE_F * Math.PI)
-
-    const orionPos = new THREE.Vector3(
-      Math.cos(arcAngle) * arcDist,
-      arcY,
-      Math.sin(arcAngle) * arcDist,
-    )
-
-    orionWorldPos.current.copy(orionPos)
+    const initialTrajectoryFraction =
+      trajectoryFractionRef.current ?? computeTrajectoryFraction(metRef.current)
+    const initialOrionPos = getOrionArcPosition(initialTrajectoryFraction)
+    orionWorldPos.current.copy(initialOrionPos)
 
     // Shuttle group
     const orionGroup = new THREE.Group()
-    // Place shuttle just before Moon on the arc (f=0.48)
-    const SF = 0.48
-    const shuttleAngle = SF * Math.PI * 1.92 - 0.08
-    const shuttleDist  = ER * 1.25 + (MOON_D * 1.10 - ER * 1.25) * Math.sin(SF * Math.PI)
-    const shuttleY     = MOON_D * 0.065 * Math.sin(SF * Math.PI)
-    const fixedOrionPos = new THREE.Vector3(
-      Math.cos(shuttleAngle) * shuttleDist,
-      shuttleY,
-      Math.sin(shuttleAngle) * shuttleDist,
-    )
-    orionGroup.position.copy(fixedOrionPos)
-    orionWorldPos.current.copy(fixedOrionPos)
+    orionGroup.position.copy(initialOrionPos)
+    orionWorldPos.current.copy(initialOrionPos)
 
     scene.add(orionGroup)
 
@@ -399,7 +374,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
 
     // Shuttle label
     const sLabel = makeTextSprite('ARTEMIS II', '#44bbff')
-    sLabel.position.set(fixedOrionPos.x, fixedOrionPos.y + MOON_D * 0.022, fixedOrionPos.z)
+    sLabel.position.set(initialOrionPos.x, initialOrionPos.y + MOON_D * 0.022, initialOrionPos.z)
     scene.add(sLabel)
 
     // ── Trajectory arc ────────────────────────────────────────────────────────
@@ -409,12 +384,9 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
 
     for (let i = 0; i <= TRAJ_STEPS; i++) {
       const f = i / TRAJ_STEPS
-      const d = ER * 1.25 + (MOON_D * 1.10 - ER * 1.25) * Math.sin(f * Math.PI)
-      const a = f * Math.PI * 1.92 - 0.08
-      const y = MOON_D * 0.065 * Math.sin(f * Math.PI)
-      const v = new THREE.Vector3(Math.cos(a) * d, y, Math.sin(a) * d)
-      if (f <= 0.5) outPts.push(v)
-      else           retPts.push(v)
+      const point = getOrionArcPosition(f)
+      if (f <= ORION_PEAK_TRAJECTORY_FRAC) outPts.push(point)
+      else retPts.push(point)
     }
 
     scene.add(new THREE.Line(
@@ -441,17 +413,28 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
         color: 0x55ccff, side: THREE.DoubleSide, transparent: true, opacity: 0.65,
       })
     )
-    posDot.position.copy(fixedOrionPos)
+    posDot.position.copy(initialOrionPos)
     scene.add(posDot)
 
     // Progress line
-    const progressPts = outPts.slice(0, Math.floor(SHUTTLE_F * outPts.length))
-    if (progressPts.length > 1) {
-      scene.add(new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints(progressPts),
-        new THREE.LineBasicMaterial({ color: 0x55ccff, transparent: true, opacity: 0.9 })
-      ))
+    const buildProgressPoints = (fraction: number): THREE.Vector3[] => {
+      const clampedFraction = Math.min(Math.max(fraction, 0), 1)
+      const steps = Math.max(2, Math.ceil(clampedFraction * TRAJ_STEPS))
+      const points: THREE.Vector3[] = []
+
+      for (let index = 0; index <= steps; index += 1) {
+        const pointFraction = (index / steps) * clampedFraction
+        points.push(getOrionArcPosition(pointFraction))
+      }
+
+      return points
     }
+
+    const progressLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(buildProgressPoints(initialTrajectoryFraction)),
+      new THREE.LineBasicMaterial({ color: 0x55ccff, transparent: true, opacity: 0.9 })
+    )
+    scene.add(progressLine)
 
     // ── Focus function ─────────────────────────────────────────────────────────
     const doFocus = (target: FocusTarget) => {
@@ -565,6 +548,15 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
       clouds.rotation.y = tick * 0.115
       moon.rotation.y   = tick * 0.018
 
+      const currentTrajectoryFraction =
+        trajectoryFractionRef.current ?? computeTrajectoryFraction(metRef.current)
+      const currentOrionPos = getOrionArcPosition(currentTrajectoryFraction)
+      orionGroup.position.copy(currentOrionPos)
+      orionWorldPos.current.copy(currentOrionPos)
+      sLabel.position.set(currentOrionPos.x, currentOrionPos.y + MOON_D * 0.022, currentOrionPos.z)
+      posDot.position.copy(currentOrionPos)
+      ;(progressLine.geometry as THREE.BufferGeometry).setFromPoints(buildProgressPoints(currentTrajectoryFraction))
+
       // Labels always face camera
       eLabel.quaternion.copy(cam.quaternion)
       mLabel.quaternion.copy(cam.quaternion)
@@ -572,7 +564,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
       posDot.quaternion.copy(cam.quaternion)
 
       // Scale shuttle visuals with camera distance so always visible
-      const d2shuttle = cam.position.distanceTo(orionPos)
+      const d2shuttle = cam.position.distanceTo(currentOrionPos)
       const s = Math.max(MOON_D * 0.005, d2shuttle * 0.010)
       coreMesh.scale.setScalar(s)
       haloRing.scale.setScalar(s)
@@ -590,6 +582,9 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
         )
         if (e.t >= 1) e.active = false
       } else if (!isDragging.current) {
+        if (focusRef.current === 'shuttle') {
+          targetPos.current.copy(currentOrionPos)
+        }
         const newPos = new THREE.Vector3()
         newPos.setFromSpherical(sph.current)
         newPos.add(targetPos.current)
@@ -897,7 +892,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
             }}>
               <span>MISSION PROGRESS</span>
               <span style={{ color: '#556677' }}>
-                {Math.round((parseMETtoSeconds(metElapsed) / 864000) * 100)}%
+                {Math.round((metStringToSeconds(metElapsed) / 864000) * 100)}%
               </span>
             </div>
             <div style={{
@@ -905,7 +900,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
             }}>
               <div style={{
                 height: '100%',
-                width:  `${Math.min(100, Math.round((parseMETtoSeconds(metElapsed) / 864000) * 100))}%`,
+                width:  `${Math.min(100, Math.round((metStringToSeconds(metElapsed) / 864000) * 100))}%`,
                 background: '#2d6be4',
                 transition: 'width 0.5s ease',
               }} />

@@ -1,8 +1,12 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
+import { env } from '../config/env';
+import { authLimiter } from '../middleware/rateLimiter';
+
+const JWT_OPTIONS: SignOptions = { expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'] };
 
 const prisma = new PrismaClient();
 export const authRouter = Router();
@@ -18,6 +22,9 @@ const loginSchema = z.object({
   password: z.string(),
 });
 
+// Apply rate limiting to all auth routes
+authRouter.use(authLimiter);
+
 authRouter.post('/register', async (req: Request, res: Response) => {
   try {
     const { email, password, name } = registerSchema.parse(req.body);
@@ -27,9 +34,7 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     const hashed = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({ data: { email, password: hashed, name } });
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET || 'secret', {
-      expiresIn: '7d',
-    });
+    const token = jwt.sign({ userId: user.id }, env.JWT_SECRET, JWT_OPTIONS);
 
     res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name } });
   } catch (err) {
@@ -42,14 +47,16 @@ authRouter.post('/login', async (req: Request, res: Response) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    // Use constant-time comparison: always run bcrypt even if user not found
+    // to prevent user enumeration via timing attacks
+    const dummyHash = '$2a$12$invalidhashusedtopreventidenumeration';
+    const valid = user
+      ? await bcrypt.compare(password, user.password)
+      : await bcrypt.compare(password, dummyHash).then(() => false);
 
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!user || !valid) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET || 'secret', {
-      expiresIn: '7d',
-    });
+    const token = jwt.sign({ userId: user.id }, env.JWT_SECRET, JWT_OPTIONS);
 
     res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
   } catch (err) {
@@ -63,7 +70,7 @@ authRouter.get('/me', async (req: Request, res: Response) => {
   if (!token) return res.status(401).json({ error: 'No token' });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as { userId: string };
+    const decoded = jwt.verify(token, env.JWT_SECRET) as { userId: string };
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: { id: true, email: true, name: true, createdAt: true },
