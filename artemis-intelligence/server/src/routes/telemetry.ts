@@ -304,7 +304,7 @@ export const telemetryRoutes = Router();
 telemetryRoutes.get('/', async (_req: Request, res: Response) => {
   try {
     const redis = getRedis();
-    const cached = await redis.get(TELEMETRY_CACHE_KEY);
+    const cached = redis ? await redis.get(TELEMETRY_CACHE_KEY) : null;
 
     if (cached) {
       res.json(JSON.parse(cached) as TelemetryPayload);
@@ -326,7 +326,10 @@ telemetryRoutes.get('/', async (_req: Request, res: Response) => {
       return;
     }
 
-    await redis.setex(TELEMETRY_CACHE_KEY, 300, JSON.stringify(payload));
+    if (redis) {
+      await redis.setex(TELEMETRY_CACHE_KEY, 300, JSON.stringify(payload));
+    }
+
     res.json(payload);
   } catch (error) {
     console.error('Telemetry route failed:', error);

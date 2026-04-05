@@ -190,7 +190,7 @@ const splashdownWeatherRoutes = Router();
 splashdownWeatherRoutes.get('/', async (_req: Request, res: Response) => {
   try {
     const redis = getRedis();
-    const cached = await redis.get(SPLASHDOWN_CACHE_KEY);
+    const cached = redis ? await redis.get(SPLASHDOWN_CACHE_KEY) : null;
 
     if (cached) {
       res.json(withLiveCountdown(JSON.parse(cached) as SplashdownWeatherPayload));
@@ -198,7 +198,10 @@ splashdownWeatherRoutes.get('/', async (_req: Request, res: Response) => {
     }
 
     const payload = await fetchSplashdownWeather();
-    await redis.setex(SPLASHDOWN_CACHE_KEY, 1800, JSON.stringify(payload));
+    if (redis) {
+      await redis.setex(SPLASHDOWN_CACHE_KEY, 1800, JSON.stringify(payload));
+    }
+
     res.json(withLiveCountdown(payload));
   } catch (error) {
     console.error('Splashdown weather route failed:', error);
