@@ -9,6 +9,8 @@ interface TelemetryMap3DProps {
   speedKmS?: number
   metElapsed?: string
   riskLevel?: 'nominal' | 'elevated' | 'severe'
+  heightPx?: number
+  fullscreen?: boolean
 }
 
 type FocusTarget = 'earth' | 'shuttle' | 'moon'
@@ -88,6 +90,8 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
   speedKmS            = 1.0,
   metElapsed          = '00:00:00',
   riskLevel           = 'nominal',
+  heightPx            = 560,
+  fullscreen          = false,
 }) => {
   const mountRef    = useRef<HTMLDivElement>(null)
   const [focus, setFocus]       = useState<FocusTarget>('earth')
@@ -145,7 +149,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
       alpha: false,
       powerPreference: 'high-performance',
     })
-    renderer.setSize(W, H)
+    renderer.setSize(mount.clientWidth || W, mount.clientHeight || H)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.15
@@ -158,8 +162,8 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
     sceneRef.current = scene
 
     // Deep space — very dark navy, not pure black
-    scene.background = new THREE.Color(0x00010e)
-    scene.fog = new THREE.FogExp2(0x00010e, 0.0006)
+    scene.background = new THREE.Color(fullscreen ? 0x000000 : 0x00010e)
+    scene.fog = new THREE.FogExp2(fullscreen ? 0x000000 : 0x00010e, 0.0006)
 
     // ── Camera ────────────────────────────────────────────────────────────────
     const cam = new THREE.PerspectiveCamera(52, W / H, ER * 0.01, STAR_MAX * 2)
@@ -474,7 +478,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
         fromTgt: targetPos.current.clone(), toTgt,
       }
       setFocus(target)
-      setShowPanel(target === 'shuttle')
+      setShowPanel(target === 'shuttle' && !fullscreen)
     }
 
     focusFn.current = doFocus
@@ -540,13 +544,16 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
 
     // ── Resize ────────────────────────────────────────────────────────────────
     const onResize = () => {
-      const w = mount.clientWidth
-      const h = mount.clientHeight
+      const w = Math.max(1, mount.clientWidth)
+      const h = Math.max(1, mount.clientHeight)
       cam.aspect = w / h
       cam.updateProjectionMatrix()
       renderer.setSize(w, h)
     }
-    window.addEventListener('resize', onResize)
+    const resizeObserver = new ResizeObserver(() => {
+      onResize()
+    })
+    resizeObserver.observe(mount)
 
     // ── Animation loop ────────────────────────────────────────────────────────
     let tick = 0
@@ -605,7 +612,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
       el.removeEventListener('touchstart', onTouchStart)
       el.removeEventListener('touchmove',  onTouchMove)
       el.removeEventListener('touchend',   onTouchEnd)
-      window.removeEventListener('resize', onResize)
+      resizeObserver.disconnect()
       renderer.dispose()
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement)
@@ -619,6 +626,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
     : riskLevel === 'elevated'
     ? '#ffaa00'
     : '#00ee77'
+  const showInternalHud = !fullscreen
 
   const MONO = '"JetBrains Mono", "Fira Code", "Courier New", monospace'
 
@@ -626,30 +634,26 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
     display:        'flex',
     alignItems:     'center',
     gap:            6,
-    padding:        '9px 20px',
+    padding:        '8px 18px',
     border:         focus === f
-      ? '1px solid rgba(68,160,255,0.8)'
-      : '1px solid rgba(68,120,220,0.22)',
-    borderRadius:   5,
+      ? '0.5px solid rgba(77,139,255,0.65)'
+      : '0.5px solid rgba(255,255,255,0.13)',
+    borderRadius:   3,
     background:     focus === f
-      ? 'rgba(10,40,90,0.75)'
+      ? 'rgba(45,107,228,0.16)'
       : hovered === f
-      ? 'rgba(5,20,50,0.65)'
-      : 'rgba(0,3,15,0.80)',
-    color:          focus === f ? '#88ccff' : '#445566',
+      ? 'rgba(255,255,255,0.04)'
+      : 'rgba(10,13,24,0.94)',
+    color:          focus === f ? '#ffffff' : 'rgba(255,255,255,0.42)',
     fontFamily:     MONO,
     fontSize:       10,
-    fontWeight:     600,
-    letterSpacing:  '0.10em',
+    fontWeight:     400,
+    letterSpacing:  '0.14em',
     cursor:         'pointer',
     transition:     'all 0.18s ease',
-    backdropFilter: 'blur(10px)',
-    WebkitBackdropFilter: 'blur(10px)',
-    boxShadow:      focus === f
-      ? '0 0 16px rgba(30,100,255,0.25), inset 0 1px 0 rgba(255,255,255,0.05)'
-      : 'none',
     whiteSpace:     'nowrap',
     userSelect:     'none',
+    textTransform:  'uppercase',
   })
 
   const dotStyle = (f: FocusTarget): React.CSSProperties => ({
@@ -661,18 +665,18 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
         : f === 'moon' ? '#aabbcc'
         : '#55ccff'
       : '#223344',
-    boxShadow:    focus === f ? '0 0 6px currentColor' : 'none',
     transition:   'all 0.18s ease',
   })
 
   return (
     <div style={{
-      position:     'relative',
+      position:     fullscreen ? 'absolute' : 'relative',
+      inset:        fullscreen ? 0 : undefined,
       width:        '100%',
-      height:       640,
-      borderRadius: 12,
+      height:       fullscreen ? '100%' : heightPx,
+      borderRadius: fullscreen ? 0 : 4,
       overflow:     'hidden',
-      background:   '#00010e',
+      background:   '#000000',
       userSelect:   'none',
       cursor:       isDragging.current ? 'grabbing' : 'grab',
     }}>
@@ -706,61 +710,63 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
         </div>
       )}
 
-      {/* ── HUD top-left ── */}
-      <div style={{
-        position:        'absolute', top: 16, left: 16, zIndex: 10,
-        pointerEvents:   'none',
-        fontFamily:      MONO,
-        fontSize:        10,
-        color:           '#667788',
-        background:      'rgba(0,2,18,0.72)',
-        border:          '1px solid rgba(40,80,160,0.3)',
-        borderRadius:    6,
-        padding:         '10px 14px',
-        backdropFilter:  'blur(14px)',
-        WebkitBackdropFilter: 'blur(14px)',
-        lineHeight:      2.0,
-        minWidth:        170,
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <span style={{ color: '#334455', fontSize: 9, letterSpacing: '0.14em' }}>ARTEMIS II</span>
-          <span style={{ color: riskColor, fontSize: 9, letterSpacing: '0.08em' }}>
-            ● {riskLevel.toUpperCase()}
-          </span>
-        </div>
-        {([
-          { label: 'MET',  value: metElapsed },
-          { label: 'DIST', value: `${Math.round(distanceFromEarthKm).toLocaleString()} km` },
-          { label: 'VEL',  value: `${speedKmS.toFixed(3)} km/s` },
-        ] as const).map(({ label, value }) => (
-          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 24 }}>
-            <span style={{ color: '#334455' }}>{label}</span>
-            <span style={{ color: '#99bbcc', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+      {showInternalHud ? (
+        <>
+          {/* ── HUD top-left ── */}
+          <div style={{
+            position:        'absolute', top: 16, left: 16, zIndex: 10,
+            pointerEvents:   'none',
+            fontFamily:      MONO,
+            fontSize:        10,
+            color:           'rgba(255,255,255,0.46)',
+            background:      'rgba(10,13,24,0.92)',
+            border:          '0.5px solid rgba(255,255,255,0.08)',
+            borderRadius:    4,
+            padding:         '10px 14px',
+            lineHeight:      2.0,
+            minWidth:        170,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 9, letterSpacing: '0.18em' }}>ARTEMIS II</span>
+              <span style={{ color: riskColor, fontSize: 9, letterSpacing: '0.08em' }}>
+                ● {riskLevel.toUpperCase()}
+              </span>
+            </div>
+            {([
+              { label: 'MET',  value: metElapsed },
+              { label: 'DIST', value: `${Math.round(distanceFromEarthKm).toLocaleString()} km` },
+              { label: 'VEL',  value: `${speedKmS.toFixed(3)} km/s` },
+            ] as const).map(({ label, value }) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 24 }}>
+                <span style={{ color: 'rgba(255,255,255,0.22)' }}>{label}</span>
+                <span style={{ color: '#a8c4ff', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* ── Top-right badge ── */}
-      <div style={{
-        position:      'absolute', top: 16, right: 16, zIndex: 10,
-        pointerEvents: 'none',
-        fontFamily:    MONO, fontSize: 9,
-        color:         'rgba(68,120,200,0.35)',
-        letterSpacing: '0.14em',
-        textAlign:     'right',
-        lineHeight:    1.8,
-      }}>
-        <div>JPL HORIZONS</div>
-        <div style={{ color: 'rgba(68,120,200,0.2)' }}>LIVE · 5 MIN</div>
-      </div>
+          {/* ── Top-right badge ── */}
+          <div style={{
+            position:      'absolute', top: 16, right: 16, zIndex: 10,
+            pointerEvents: 'none',
+            fontFamily:    MONO, fontSize: 9,
+            color:         'rgba(68,120,200,0.35)',
+            letterSpacing: '0.14em',
+            textAlign:     'right',
+            lineHeight:    1.8,
+          }}>
+            <div>JPL HORIZONS</div>
+            <div style={{ color: 'rgba(68,120,200,0.2)' }}>LIVE · 5 MIN</div>
+          </div>
+        </>
+      ) : null}
 
       {/* ── Focus buttons bottom-center ── */}
       <div style={{
         position:      'absolute',
-        bottom:        22,
+        bottom:        fullscreen ? 'calc(var(--replay-timeline-height, 136px) + 8px)' : 22,
         left:          '50%',
         transform:     'translateX(-50%)',
-        zIndex:        20,
+        zIndex:        fullscreen ? 30 : 20,
         display:       'flex',
         gap:           8,
         pointerEvents: 'auto',
@@ -784,21 +790,18 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
       </div>
 
       {/* ── Shuttle Detail Panel ── */}
-      {showPanel && (
+      {!fullscreen && showPanel ? (
         <div style={{
           position:        'absolute',
           top:             16,
           right:           16,
           zIndex:          15,
           width:           240,
-          background:      'rgba(0,3,18,0.88)',
-          border:          '1px solid rgba(68,160,255,0.25)',
-          borderRadius:    8,
-          backdropFilter:  'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
+          background:      'rgba(10,13,24,0.96)',
+          border:          '0.5px solid rgba(255,255,255,0.08)',
+          borderRadius:    4,
           overflow:        'hidden',
           fontFamily:      '"JetBrains Mono", "Fira Code", "Courier New", monospace',
-          boxShadow:       '0 0 32px rgba(30,100,255,0.12)',
           animation:       'panelIn 0.22s ease',
         }}>
           <style>{`
@@ -842,7 +845,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
               display:       'inline-block',
               padding:       '3px 10px',
               borderRadius:  3,
-              border:        `1px solid ${riskColor}44`,
+              border:        `0.5px solid ${riskColor}44`,
               background:    `${riskColor}11`,
               color:         riskColor,
               fontSize:      8.5,
@@ -898,13 +901,12 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
               </span>
             </div>
             <div style={{
-              height: 2, background: 'rgba(30,50,80,0.6)', borderRadius: 1, overflow: 'hidden',
+              height: 2, background: 'rgba(255,255,255,0.08)', overflow: 'hidden',
             }}>
               <div style={{
                 height: '100%',
                 width:  `${Math.min(100, Math.round((parseMETtoSeconds(metElapsed) / 864000) * 100))}%`,
-                background: 'linear-gradient(90deg, #2255cc, #55ccff)',
-                borderRadius: 1,
+                background: '#2d6be4',
                 transition: 'width 0.5s ease',
               }} />
             </div>
@@ -919,41 +921,45 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
           </div>
 
         </div>
-      )}
+      ) : null}
 
-      {/* ── Drag hint ── */}
-      <div style={{
-        position:      'absolute', bottom: 66, left: '50%',
-        transform:     'translateX(-50%)',
-        zIndex:        10, pointerEvents: 'none',
-        fontFamily:    MONO, fontSize: 9,
-        color:         'rgba(50,80,140,0.4)',
-        letterSpacing: '0.12em', whiteSpace: 'nowrap',
-      }}>
-        DRAG TO ORBIT · SCROLL TO ZOOM · PINCH TO SCALE
-      </div>
-
-      {/* ── Legend ── */}
-      <div style={{
-        position:      'absolute', bottom: 22, left: 16,
-        zIndex:        10, pointerEvents: 'none',
-        fontFamily:    MONO, fontSize: 8.5,
-        color:         'rgba(50,80,130,0.55)',
-        lineHeight:    2.2,
-        letterSpacing: '0.06em',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <div style={{ width: 18, height: 1, background: 'rgba(30,80,200,0.7)' }} />
-          <span style={{ color: 'rgba(70,110,220,0.55)' }}>OUTBOUND</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      {showInternalHud ? (
+        <>
+          {/* ── Drag hint ── */}
           <div style={{
-            width: 18, height: 1,
-            backgroundImage: 'repeating-linear-gradient(90deg, rgba(220,130,30,0.7) 0, rgba(220,130,30,0.7) 5px, transparent 5px, transparent 8px)'
-          }} />
-          <span style={{ color: 'rgba(200,120,30,0.55)' }}>RETURN</span>
-        </div>
-      </div>
+            position:      'absolute', bottom: 66, left: '50%',
+            transform:     'translateX(-50%)',
+            zIndex:        10, pointerEvents: 'none',
+            fontFamily:    MONO, fontSize: 9,
+            color:         'rgba(50,80,140,0.4)',
+            letterSpacing: '0.12em', whiteSpace: 'nowrap',
+          }}>
+            DRAG TO ORBIT · SCROLL TO ZOOM · PINCH TO SCALE
+          </div>
+
+          {/* ── Legend ── */}
+          <div style={{
+            position:      'absolute', bottom: 22, left: 16,
+            zIndex:        10, pointerEvents: 'none',
+            fontFamily:    MONO, fontSize: 8.5,
+            color:         'rgba(50,80,130,0.55)',
+            lineHeight:    2.2,
+            letterSpacing: '0.06em',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <div style={{ width: 18, height: 1, background: 'rgba(30,80,200,0.7)' }} />
+              <span style={{ color: 'rgba(70,110,220,0.55)' }}>OUTBOUND</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <div style={{
+                width: 18, height: 1,
+                backgroundImage: 'repeating-linear-gradient(90deg, rgba(220,130,30,0.7) 0, rgba(220,130,30,0.7) 5px, transparent 5px, transparent 8px)'
+              }} />
+              <span style={{ color: 'rgba(200,120,30,0.55)' }}>RETURN</span>
+            </div>
+          </div>
+        </>
+      ) : null}
 
     </div>
   )

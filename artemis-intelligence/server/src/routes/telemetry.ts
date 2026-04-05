@@ -5,6 +5,9 @@ const HORIZONS_API_URL = 'https://ssd.jpl.nasa.gov/api/horizons.api';
 const DONKI_API_BASE_URL = 'https://api.nasa.gov/DONKI';
 const TELEMETRY_CACHE_KEY = 'telemetry:replay:live';
 const EARTH_MOON_DISTANCE_KM = 384400;
+// Max plausible geocentric distance for a lunar-vicinity mission (km).
+// If JPL returns beyond this, the ephemeris is for the wrong object.
+const MAX_LUNAR_MISSION_DISTANCE_KM = 500_000;
 const THREE_DAYS_IN_MS = 3 * 24 * 60 * 60 * 1000;
 
 type RiskLevel = 'nominal' | 'elevated' | 'severe';
@@ -149,6 +152,16 @@ function parseTrajectoryFromHorizons(result: string, requestedAt: Date): Traject
   const [x, y, z, vx, vy, vz] = numericVector;
   const distanceFromEarthKm = magnitude([x, y, z]);
   const speedKmS = magnitude([vx, vy, vz]);
+
+  // Sanity-check: if the distance is implausibly large for a lunar-vicinity
+  // mission, JPL returned data for the wrong object. Throw so the caller
+  // falls back to simulation data.
+  if (distanceFromEarthKm > MAX_LUNAR_MISSION_DISTANCE_KM) {
+    throw new Error(
+      `JPL Horizons returned implausible geocentric distance: ${Math.round(distanceFromEarthKm).toLocaleString()} km — ` +
+      'likely wrong spacecraft ID. Falling back to simulation.'
+    );
+  }
 
   return {
     distanceFromEarthKm: Math.round(distanceFromEarthKm),

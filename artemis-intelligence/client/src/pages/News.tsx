@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { formatMissionMet } from '../lib/mission'
 
 interface Article {
   id: string
@@ -11,114 +12,163 @@ interface Article {
   summary: string
 }
 
+interface MissionResponse {
+  launchDate: string
+}
+
+function formatRelativeAge(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Recent'
+  }
+
+  const diffMs = Date.now() - date.getTime()
+  const diffHours = Math.max(1, Math.round(diffMs / (1000 * 60 * 60)))
+
+  if (diffHours < 24) {
+    return `${diffHours}h ago`
+  }
+
+  const diffDays = Math.round(diffHours / 24)
+  return `${diffDays}d ago`
+}
+
+function formatMastheadDate(now: Date) {
+  return now.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
 export default function News() {
   const [articles, setArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(true)
+  const [launchDate, setLaunchDate] = useState<string | null>(null)
+  const [now, setNow] = useState(() => new Date())
+  const [hiddenImages, setHiddenImages] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     api
       .get('/api/news')
       .then((response) => setArticles(response.data))
       .finally(() => setLoading(false))
+
+    api
+      .get<MissionResponse>('/api/mission')
+      .then((response) => setLaunchDate(response.data.launchDate))
+      .catch(() => {})
   }, [])
 
-  if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center text-sm text-[color:var(--muted)]">
-        Loading news...
-      </div>
-    )
-  }
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(new Date())
+    }, 1000)
 
+    return () => window.clearInterval(interval)
+  }, [])
+
+  const metElapsed = launchDate ? formatMissionMet(launchDate, now) : '--:--:--'
   const [featuredArticle, ...otherArticles] = articles
 
+  function hasImage(article: Article | undefined) {
+    if (!article?.image_url) {
+      return false
+    }
+
+    return !hiddenImages[article.id]
+  }
+
   return (
-    <div className="page">
-      <section className="page-header-split">
-        <div className="page-header">
-          <p className="section-label">News</p>
-          <h1 className="page-title">Coverage and analysis</h1>
-          <p className="page-copy">
-            A curated editorial view of recent Artemis reporting, with one lead story and a structured grid of supporting coverage below.
-          </p>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="card-plain p-6">
-            <p className="section-label">Stories loaded</p>
-            <div className="value-display mt-4">{articles.length}</div>
-            <p className="mt-4 text-sm text-[color:var(--muted)]">Recent mission-related articles returned by the news service.</p>
-          </div>
-          <div className="card-plain p-6">
-            <p className="section-label">Coverage mode</p>
-            <div className="mt-4 text-[28px] font-semibold tracking-[-0.02em] text-[color:var(--text)]">Editorial feed</div>
-            <p className="mt-4 text-sm text-[color:var(--muted)]">One featured report and a three-column briefing grid.</p>
-          </div>
+    <div className="news-page">
+      <section className="news-masthead">
+        <div className="news-brandline">Artemis Intelligence</div>
+        <h1 className="news-masthead-title">Mission Dispatch</h1>
+        <div className="news-masthead-meta">
+          {formatMastheadDate(now)} · MET {metElapsed}
         </div>
       </section>
 
-      {featuredArticle && (
-        <section className="card overflow-hidden">
-          <div className="grid gap-0 lg:grid-cols-[0.88fr_1.12fr]">
-            {featuredArticle.image_url && (
-              <div className="min-h-[340px] bg-[color:var(--surface-soft)]">
-                <img src={featuredArticle.image_url} alt={featuredArticle.title} className="h-full w-full object-cover" />
-              </div>
-            )}
-
-            <div className="flex flex-col p-6 md:p-8">
-              <div className="flex flex-wrap items-center gap-3 text-sm text-[color:var(--muted)]">
-                <span>{featuredArticle.news_site}</span>
-                <span>•</span>
-                <span>{new Date(featuredArticle.published_at).toLocaleDateString()}</span>
-              </div>
-
-              <h2 className="mt-5 text-[34px] font-semibold leading-tight tracking-[-0.02em] text-[color:var(--text)]">
-                {featuredArticle.title}
-              </h2>
-
-              <p className="mt-5 max-w-2xl text-base leading-8 text-[color:var(--muted)]">{featuredArticle.summary}</p>
-
-              <div className="mt-8 pt-6 border-t border-[color:var(--border)]">
-                <a
-                  href={featuredArticle.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 transition-colors hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  Read more →
-                </a>
-              </div>
+      {loading ? (
+        <div className="page-shell" style={{ paddingTop: 16 }}>
+          <div className="panel-frame" style={{ minHeight: 240, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <span className="panel-label">Press Desk</span>
+              <h2 className="section-title">Loading coverage</h2>
+              <p className="section-copy">Gathering the latest Artemis reporting from the current news feed.</p>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {!loading && featuredArticle ? (
+        <section className="news-featured">
+          <div className="news-featured-grid">
+            <div>
+              <div className="news-featured-kicker">Breaking</div>
+              <a href={featuredArticle.url} target="_blank" rel="noreferrer">
+                <h2 className="news-featured-headline">{featuredArticle.title}</h2>
+              </a>
+              <p className="news-featured-deck">{featuredArticle.summary}</p>
+              <div className="news-featured-meta">
+                {featuredArticle.news_site} · {new Date(featuredArticle.published_at).toLocaleString()}
+              </div>
+            </div>
+
+            <div className={`news-featured-media${hasImage(featuredArticle) ? '' : ' news-featured-media--empty'}`}>
+              {hasImage(featuredArticle) ? (
+                <img
+                  src={featuredArticle.image_url}
+                  alt={featuredArticle.title}
+                  className="news-featured-image"
+                  loading="eager"
+                  onError={() => setHiddenImages((current) => ({ ...current, [featuredArticle.id]: true }))}
+                />
+              ) : (
+                <div className="news-featured-fallback">
+                  <span>{featuredArticle.news_site}</span>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="news-featured-divider" />
         </section>
-      )}
+      ) : null}
 
-      <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-        {otherArticles.map((article) => (
-          <article key={article.id} className="card-plain flex flex-col p-6">
-            <div className="flex items-center gap-3 text-sm text-[color:var(--muted)]">
-              <span>{article.news_site}</span>
-              <span>•</span>
-              <span>{new Date(article.published_at).toLocaleDateString()}</span>
-            </div>
-
-            <h2 className="mt-4 text-[22px] font-semibold leading-tight tracking-[-0.02em] text-[color:var(--text)]">
-              {article.title}
-            </h2>
-            <p className="mt-4 flex-1 text-sm leading-7 text-[color:var(--muted)]">{article.summary}</p>
-
-            <a
-              href={article.url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-blue-600 transition-colors hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              Read more →
+      {!loading ? (
+        <section className="news-list">
+          {otherArticles.map((article, index) => (
+            <a key={article.id} href={article.url} target="_blank" rel="noreferrer" className="news-row">
+              <div className="news-index">{String(index + 1).padStart(2, '0')}</div>
+              <div className={`news-row-thumb${hasImage(article) ? '' : ' news-row-thumb--empty'}`}>
+                {hasImage(article) ? (
+                  <img
+                    src={article.image_url}
+                    alt={article.title}
+                    className="news-row-thumb-image"
+                    loading="lazy"
+                    onError={() => setHiddenImages((current) => ({ ...current, [article.id]: true }))}
+                  />
+                ) : (
+                  <span className="news-row-thumb-fallback">{article.news_site}</span>
+                )}
+              </div>
+              <div>
+                <div className="news-row-headline">{article.title}</div>
+                <div className="news-row-deck">
+                  {article.news_site} · {article.summary}
+                </div>
+              </div>
+              <div className="news-row-meta">
+                <div className="news-row-source">{article.news_site}</div>
+                <div className="news-row-time">{formatRelativeAge(article.published_at)}</div>
+              </div>
             </a>
-          </article>
-        ))}
-      </section>
+          ))}
+        </section>
+      ) : null}
     </div>
   )
 }

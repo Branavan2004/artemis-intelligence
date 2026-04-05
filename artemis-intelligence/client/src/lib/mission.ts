@@ -2,6 +2,15 @@ export function getMissionHoursElapsed(launchDate: string, now = new Date()) {
   return (now.getTime() - new Date(launchDate).getTime()) / (1000 * 60 * 60)
 }
 
+function formatMetFromSeconds(totalSeconds: number) {
+  const clamped = Math.max(0, Math.floor(totalSeconds))
+  const hours = Math.floor(clamped / 3600)
+  const minutes = Math.floor((clamped % 3600) / 60)
+  const seconds = clamped % 60
+
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':')
+}
+
 export function getMissionElapsedTime(launchDate: string, now = new Date()) {
   const diff = now.getTime() - new Date(launchDate).getTime()
   const prefix = diff < 0 ? 'T-' : 'T+'
@@ -11,6 +20,24 @@ export function getMissionElapsedTime(launchDate: string, now = new Date()) {
   const seconds = Math.floor((absoluteDiff % (1000 * 60)) / 1000)
 
   return `${prefix} ${hours}h ${minutes}m ${seconds}s`
+}
+
+export function formatMissionMet(launchDate: string, now = new Date()) {
+  return formatMetFromSeconds((now.getTime() - new Date(launchDate).getTime()) / 1000)
+}
+
+export function formatMissionMetFromHours(hoursElapsed: number) {
+  return formatMetFromSeconds(hoursElapsed * 3600)
+}
+
+export function formatMissionMetFromTimestamp(launchDate: string, timestamp: string | null | undefined, fallback = new Date()) {
+  const nextDate = timestamp ? new Date(timestamp) : fallback
+
+  if (Number.isNaN(nextDate.getTime())) {
+    return formatMissionMet(launchDate, fallback)
+  }
+
+  return formatMissionMet(launchDate, nextDate)
 }
 
 export function getMissionPhase(launchDate: string, now = new Date()) {

@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
 import { io } from 'socket.io-client'
-import { ArrowUpRight } from 'lucide-react'
+import CrewActivityFeed from '../components/CrewActivityFeed'
+import DSNTracker from '../components/DSNTracker'
+import WindowView from '../components/WindowView'
+import { useDSN } from '../hooks/useDSN'
+import { useTelemetry } from '../hooks/useTelemetry'
 import { api, SOCKET_URL } from '../lib/api'
-import { getMissionElapsedTime, getMissionHoursElapsed, getMissionPhase } from '../lib/mission'
+import { formatMissionMet, getMissionHoursElapsed } from '../lib/mission'
+import { getDistanceFromEarthKm, getVelocityKmS } from '../lib/replay'
 
 interface MissionData {
   name: string
@@ -22,36 +26,179 @@ interface MissionUpdate {
   phase: string
 }
 
-const fadeIn = {
-  hidden: { opacity: 0, y: 8 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' } },
+interface AnomalyLogEntry {
+  met: string
+  severity: 'nominal' | 'caution' | 'abort'
+  system: string
+  event: string
+  resolved: boolean
+  note?: string
+}
+
+const APOLLO_13_RECORD_KM = 400171
+const SOLAR_ECLIPSE_START_MS = Date.parse('2026-04-07T00:02:00Z')
+const SOLAR_ECLIPSE_END_MS = Date.parse('2026-04-07T00:55:00Z')
+
+const PHASE_WINDOWS = [
+  {
+    name: 'Earth Orbit',
+    start: 0,
+    end: 25,
+    description: 'Initial checkout, systems validation, and crew adaptation in Earth orbit.',
+  },
+  {
+    name: 'Cislunar Transit',
+    start: 25,
+    end: 94,
+    description: 'Orion rides outbound toward the Moon while teams watch navigation, comms, and crew tempo.',
+  },
+  {
+    name: 'Lunar Flyby',
+    start: 94,
+    end: 120,
+    description: 'The mission reaches lunar distance for its highest-precision and highest-visibility operations.',
+  },
+  {
+    name: 'Return Transit',
+    start: 120,
+    end: 204,
+    description: 'A long inbound coast back to Earth with consumables, systems, and crew rhythm under constant watch.',
+  },
+  {
+    name: 'Reentry & Recovery',
+    start: 204,
+    end: Number.POSITIVE_INFINITY,
+    description: 'Ground and flight teams converge on the final return corridor, splashdown, and recovery sequence.',
+  },
+] as const
+
+const MISSION_MILESTONES = [
+  { hour: 25 + 14 / 60, label: 'Translunar Injection' },
+  { hour: 94, label: 'Lunar Sphere Entry' },
+  { hour: 115 + 10 / 60, label: 'Record Break' },
+  { hour: 120 + 27 / 60, label: 'Closest Approach' },
+  { hour: 204 + 25 / 60, label: 'Reentry' },
+  { hour: 204 + 55 / 60, label: 'Splashdown' },
+] as const
+
+const DSN_STATIONS = [
+  { code: 'GOLDSTONE  CA', id: 'gdscc' },
+  { code: 'MADRID     ES', id: 'mdscc' },
+  { code: 'CANBERRA   AU', id: 'cdscc' },
+] as const
+
+const ANOMALY_LOG: AnomalyLogEntry[] = [
+  {
+    met: '00:02:15',
+    severity: 'nominal',
+    system: 'SOLAR ARRAYS',
+    event: 'All 4 SAWs deployed — nominal configuration confirmed',
+    resolved: true,
+  },
+  {
+    met: '00:30:00',
+    severity: 'caution',
+    system: 'TOILET (WASTE MGT)',
+    event: 'Toilet malfunction reported immediately after reaching orbit',
+    resolved: false,
+    note: 'Crew adapting — work-around in place',
+  },
+  {
+    met: '74:09:00',
+    severity: 'caution',
+    system: 'ENVIRONMENTAL',
+    event: 'Unusual smell reported by crew Saturday morning',
+    resolved: false,
+    note: 'Flight team investigated — power/heater data nominal. Possibly mechanical off-gassing from tapes/materials',
+  },
+  {
+    met: '74:35:00',
+    severity: 'nominal',
+    system: 'ENVIRONMENTAL',
+    event: 'NASA: No hazardous condition identified — investigation ongoing',
+    resolved: true,
+  },
+] as const
+
+const ORION_SYSTEM_STATUS = [
+  { label: 'LIFE SUPPORT', status: 'GO' },
+  { label: 'PROPULSION', status: 'GO' },
+  { label: 'COMMUNICATIONS', status: 'GO' },
+  { label: 'NAVIGATION', status: 'GO' },
+  { label: 'POWER (SOLAR)', status: 'GO' },
+  { label: 'THERMAL CTRL', status: 'GO' },
+  { label: 'WASTE MGMT', status: 'FAULT' },
+  { label: 'ENVIRONMENTAL', status: 'CAUTION' },
+  { label: 'LASER COMMS', status: 'GO' },
+] as const
+
+function padMet(value: string) {
+  const [hours = '00', minutes = '00', seconds = '00'] = (value || '00:00:00').split(':')
+  return `${hours.padStart(3, '0')}:${minutes.padStart(2, '0')}:${seconds.padStart(2, '0')}`
+}
+
+function formatCountdown(hoursRemaining: number) {
+  const totalSeconds = Math.max(0, Math.round(hoursRemaining * 3600))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  return `${String(hours).padStart(3, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+function formatEclipseCountdown(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  return `T−${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+function getRiskColor(riskLevel: 'nominal' | 'elevated' | 'severe') {
+  if (riskLevel === 'severe') return 'var(--abort)'
+  if (riskLevel === 'elevated') return 'var(--caution)'
+  return 'var(--go)'
+}
+
+function getStatusTone(status: 'GO' | 'CAUTION' | 'FAULT') {
+  if (status === 'FAULT') return 'var(--abort)'
+  if (status === 'CAUTION') return 'var(--caution)'
+  return 'var(--go)'
+}
+
+function getAnomalySeverityColor(severity: 'nominal' | 'caution' | 'abort') {
+  if (severity === 'abort') return 'var(--abort)'
+  if (severity === 'caution') return 'var(--caution)'
+  return 'var(--go)'
+}
+
+function getMissionPhaseWindow(hoursElapsed: number) {
+  return PHASE_WINDOWS.find((phase) => hoursElapsed >= phase.start && hoursElapsed < phase.end) ?? PHASE_WINDOWS[0]
 }
 
 export default function Dashboard() {
   const [mission, setMission] = useState<MissionData | null>(null)
-  const [elapsed, setElapsed] = useState('')
-  const [currentPhase, setCurrentPhase] = useState('')
+  const [now, setNow] = useState(() => new Date())
   const [apod, setApod] = useState<{ url: string; title: string; explanation: string } | null>(null)
   const [telemetryState, setTelemetryState] = useState<'connecting' | 'live' | 'offline'>('connecting')
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
+  const { data: telemetry } = useTelemetry()
+  const { data: dsnData, lastUpdated: dsnUpdatedAt } = useDSN()
 
   useEffect(() => {
     api.get('/api/mission').then((response) => setMission(response.data))
-    api.get('/api/mission/apod').then((response) => setApod(response.data)).catch(() => {})
+    api
+      .get('/api/mission/apod')
+      .then((response) => setApod(response.data))
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
-    if (!mission) return
+    const interval = window.setInterval(() => {
+      setNow(new Date())
+    }, 1000)
 
-    const tick = () => {
-      setElapsed(getMissionElapsedTime(mission.launchDate))
-      setCurrentPhase(getMissionPhase(mission.launchDate))
-    }
-
-    tick()
-    const interval = setInterval(tick, 1000)
-    return () => clearInterval(interval)
-  }, [mission])
+    return () => window.clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     const socket = io(SOCKET_URL)
@@ -70,7 +217,6 @@ export default function Dashboard() {
     })
 
     socket.on('mission:update', (update: MissionUpdate) => {
-      setCurrentPhase(update.phase)
       setLastSyncAt(update.timestamp)
       setTelemetryState('live')
     })
@@ -82,213 +228,358 @@ export default function Dashboard() {
 
   if (!mission) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-[color:var(--muted)]">
-        Loading mission data...
+      <div className="page-shell">
+        <div
+          className="panel-frame"
+          style={{
+            minHeight: 'calc(100vh - 180px)',
+            display: 'grid',
+            placeItems: 'center',
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <span className="panel-label">Mission Control</span>
+            <h1 className="section-title">Loading live mission desk</h1>
+            <p className="section-copy">Pulling Artemis II mission data, telemetry feeds, and current cislunar context.</p>
+          </div>
+        </div>
       </div>
     )
   }
 
-  const hoursElapsed = getMissionHoursElapsed(mission.launchDate)
-  const nextPhase = mission.phases.find((phase) => phase.startHour > hoursElapsed)
-  const formattedLaunch = new Date(mission.launchDate).toLocaleString([], {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-
-  const telemetryLabel =
-    telemetryState === 'live' ? 'Live' : telemetryState === 'connecting' ? 'Connecting' : 'Offline'
-  const telemetryDot =
-    telemetryState === 'live' ? 'bg-emerald-500' : telemetryState === 'connecting' ? 'bg-amber-500' : 'bg-amber-500'
+  const hoursElapsed = getMissionHoursElapsed(mission.launchDate, now)
+  const totalMissionHours = mission.phases[mission.phases.length - 1]?.endHour ?? 240
+  const metElapsed = padMet(formatMissionMet(mission.launchDate, now))
+  const fallbackDistanceFromEarthKm = getDistanceFromEarthKm(hoursElapsed)
+  const fallbackSpeedKmS = getVelocityKmS(hoursElapsed)
+  const trajectorySampleTime = telemetry?.trajectory?.timestamp ? new Date(telemetry.trajectory.timestamp) : null
+  const secondsSinceTrajectorySample =
+    trajectorySampleTime && !Number.isNaN(trajectorySampleTime.getTime())
+      ? Math.max(0, (now.getTime() - trajectorySampleTime.getTime()) / 1000)
+      : 0
+  const trajectoryDirection = hoursElapsed < 120 ? 1 : -1
+  const distanceFromEarthKm = telemetry?.trajectory
+    ? Math.max(0, telemetry.trajectory.distanceFromEarthKm + trajectoryDirection * telemetry.trajectory.speedKmS * secondsSinceTrajectorySample)
+    : fallbackDistanceFromEarthKm
+  const speedKmS = telemetry?.trajectory?.speedKmS ?? fallbackSpeedKmS
+  const signalDelaySeconds = distanceFromEarthKm / 299792
+  const distanceFromMoonKm = Math.abs(384400 - distanceFromEarthKm)
+  const riskLevel = telemetry?.spaceWeather?.riskLevel ?? 'nominal'
+  const riskColor = getRiskColor(riskLevel)
+  const missionPhase = getMissionPhaseWindow(hoursElapsed)
+  const missionProgress = Math.min(100, Math.max(0, (hoursElapsed / totalMissionHours) * 100))
+  const nextMilestone = MISSION_MILESTONES.find((milestone) => hoursElapsed < milestone.hour) ?? null
+  const activeStationIndex = Math.floor(now.getTime() / 3600000) % DSN_STATIONS.length
+  const recordBroken = distanceFromEarthKm >= APOLLO_13_RECORD_KM
+  const recordProgress = Math.min(100, (distanceFromEarthKm / APOLLO_13_RECORD_KM) * 100)
+  const dsnTimestamp = dsnUpdatedAt
+    ? dsnUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : telemetryState.toUpperCase()
+  const nowMs = now.getTime()
+  const eclipseState = nowMs < SOLAR_ECLIPSE_START_MS ? 'upcoming' : nowMs <= SOLAR_ECLIPSE_END_MS ? 'live' : 'complete'
+  const eclipseCountdown = formatEclipseCountdown(SOLAR_ECLIPSE_START_MS - nowMs)
+  const eclipseProgress = Math.min(
+    100,
+    Math.max(0, ((nowMs - SOLAR_ECLIPSE_START_MS) / (SOLAR_ECLIPSE_END_MS - SOLAR_ECLIPSE_START_MS)) * 100),
+  )
+  const anomalyOpenCount = ANOMALY_LOG.filter((entry) => !entry.resolved).length
+  const anomalyClosedCount = ANOMALY_LOG.length - anomalyOpenCount
 
   return (
-    <div className="page">
-      <motion.section initial="hidden" animate="show" variants={fadeIn} className="page-header-split">
-        <div className="page-header">
-          <p className="section-label">Overview</p>
-          <h1 className="page-title">A mission desk for Artemis II.</h1>
-          <p className="page-copy">
-            Track live mission timing, monitor telemetry state, review the flight timeline, and follow key vehicle details from launch through splashdown.
-          </p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div>
-              <p className="eyebrow">Launch time</p>
-              <p className="mt-1 text-sm font-medium text-[color:var(--text)]">{formattedLaunch}</p>
-            </div>
-            <div>
-              <p className="eyebrow">Next milestone</p>
-              <p className="mt-1 text-sm font-medium text-[color:var(--text)]">
-                {nextPhase ? nextPhase.name : 'Mission complete'}
-              </p>
-            </div>
-            <div>
-              <p className="eyebrow">Vehicle stack</p>
-              <p className="mt-1 text-sm font-medium text-[color:var(--text)]">
-                {mission.spacecraft.rocket} + {mission.spacecraft.name}
-              </p>
-            </div>
-            <div>
-              <p className="eyebrow">Recovery target</p>
-              <p className="mt-1 text-sm font-medium text-[color:var(--text)]">{mission.spacecraft.splashdownTarget}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="card p-6 md:p-7">
-          <div className="flex items-start justify-between gap-6">
-            <div>
-              <p className="section-label">Current status</p>
-              <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.02em] text-[color:var(--text)]">
-                {currentPhase}
-              </h2>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-[color:var(--muted)]">
-              <span className={`status-dot ${telemetryDot}`} />
-              <span>{telemetryLabel}</span>
-            </div>
+    <div
+      className="dashboard-shell stagger"
+      data-apod-title={apod?.title ?? ''}
+      data-last-sync-at={lastSyncAt ?? ''}
+      data-mission-name={mission.name}
+      data-dsn-source={dsnData?.source ?? ''}
+      data-telemetry-state={telemetryState}
+    >
+      <div className="dashboard-main">
+        <section className="dashboard-telemetry-strip">
+          <div className="dashboard-telemetry-cell">
+            <span className="dashboard-telemetry-label">Mission Elapsed Time</span>
+            <span key={metElapsed} className="dashboard-telemetry-value flash">
+              {metElapsed}
+            </span>
           </div>
 
-          <div className="mt-8">
-            <div className="mono-display">{elapsed}</div>
-            <p className="mt-2 text-sm text-[color:var(--muted)]">
-              {lastSyncAt ? `Updated ${new Date(lastSyncAt).toLocaleTimeString()}` : 'Waiting for telemetry updates'}
-            </p>
+          <div className="dashboard-telemetry-cell">
+            <span className="dashboard-telemetry-label">Distance From Earth</span>
+            <span key={Math.round(distanceFromEarthKm)} className="dashboard-telemetry-value flash">
+              {Math.round(distanceFromEarthKm).toLocaleString()} km
+            </span>
           </div>
 
-          <div className="mt-8">
-            <div className="flex items-center justify-between text-sm text-[color:var(--muted)]">
-              <span>Mission progress</span>
-              <span className="font-mono text-[color:var(--text)]">{mission.progress}%</span>
+          <div className="dashboard-telemetry-cell">
+            <span className="dashboard-telemetry-label">Velocity</span>
+            <span key={speedKmS.toFixed(3)} className="dashboard-telemetry-value flash">
+              {speedKmS.toFixed(3)} km/s
+            </span>
+          </div>
+
+          <div className="dashboard-telemetry-cell">
+            <span className="dashboard-telemetry-label">Signal Delay</span>
+            <span key={signalDelaySeconds.toFixed(2)} className="dashboard-telemetry-value flash">
+              {signalDelaySeconds.toFixed(2)} s
+            </span>
+          </div>
+
+          <div className="dashboard-telemetry-cell">
+            <span className="dashboard-telemetry-label">Radiation</span>
+            <span key={riskLevel} className="dashboard-telemetry-status flash" style={{ color: riskColor }}>
+              <span className="dashboard-status-dot" style={{ background: riskColor }} />
+              {riskLevel.toUpperCase()}
+            </span>
+          </div>
+        </section>
+
+        <section className="dashboard-section-frame" style={{ padding: 24 }}>
+          <div className="panel-header">
+            <span className="panel-label">Deep Space Network</span>
+            <span className="panel-live">Live</span>
+          </div>
+          <DSNTracker />
+        </section>
+
+        <section className="dashboard-section-frame dashboard-feed-frame">
+          <CrewActivityFeed metElapsed={metElapsed} />
+        </section>
+      </div>
+
+      <aside className="dashboard-sidebar">
+        <div className="dashboard-sticky">
+          <section className="mission-sidebar-panel">
+            <header className="panel-header">
+              <span className="panel-label">Mission Phase</span>
+              <span className="panel-live">Live</span>
+            </header>
+
+            <h2 className="mission-phase-name">{missionPhase.name}</h2>
+            <p className="mission-phase-description">{missionPhase.description}</p>
+
+            <div className="mission-progress-track">
+              <div className="mission-progress-fill" style={{ width: `${missionProgress}%` }} />
             </div>
-            <div className="mt-3 h-1 rounded-full bg-slate-200 dark:bg-slate-800">
-              <div className="h-1 rounded-full bg-blue-600" style={{ width: `${mission.progress}%` }} />
+
+            <div className="mission-sidebar-meta">
+              {nextMilestone ? `T-${formatCountdown(nextMilestone.hour - hoursElapsed)} to ${nextMilestone.label}` : 'T-000:00:00 to Recovery Complete'}
             </div>
-          </div>
-        </div>
-      </motion.section>
+          </section>
 
-      <motion.section initial="hidden" animate="show" variants={fadeIn} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {[
-          ['Mission time', elapsed, 'Live mission clock'],
-          ['Current phase', currentPhase, 'Mission segment in focus'],
-          ['Telemetry', telemetryLabel, lastSyncAt ? `Last sync ${new Date(lastSyncAt).toLocaleTimeString()}` : 'Status from the live stream'],
-          ['Progress', `${mission.progress}%`, 'Completion across the planned mission window'],
-        ].map(([label, value, note], index) => (
-          <div key={label} className="card-plain p-6">
-            <p className="section-label">{label}</p>
-            <div className={`mt-4 ${index === 0 ? 'mono-display text-[30px]' : 'value-display text-[30px]'}`}>{value}</div>
-            <p className="mt-4 text-sm text-[color:var(--muted)]">{note}</p>
-          </div>
-        ))}
-      </motion.section>
-
-      <motion.section initial="hidden" animate="show" variants={fadeIn} className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="card p-6 md:p-8">
-          <div className="flex items-start justify-between gap-6">
+          <section className="mission-sidebar-panel">
             <div>
-              <p className="section-label">Timeline</p>
-              <h2 className="section-title mt-2">Mission phases</h2>
+              <div className="signal-delay-display flash" key={signalDelaySeconds.toFixed(2)}>
+                {signalDelaySeconds.toFixed(2)}
+              </div>
+              <div className="signal-delay-unit">Seconds</div>
+              <p className="signal-delay-copy">one-way light speed delay</p>
             </div>
-            <p className="max-w-sm text-right text-sm text-[color:var(--muted)]">
-              The current phase is highlighted, with completed and upcoming phases kept in sequence for quick scanning.
-            </p>
-          </div>
 
-          <div className="mt-8 space-y-0">
-            {mission.phases.map((phase, index) => {
-              const isComplete = hoursElapsed > phase.endHour
-              const isActive = hoursElapsed >= phase.startHour && hoursElapsed < phase.endHour
+            <div className="panel-divider" />
 
-              return (
-                <div key={phase.name} className="grid grid-cols-[20px_1fr] gap-4">
-                  <div className="relative flex justify-center">
-                    <span
-                      className={`mt-2 h-2.5 w-2.5 rounded-full ${
-                        isActive ? 'bg-blue-600' : isComplete ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-                      }`}
-                    />
-                    {index !== mission.phases.length - 1 && (
-                      <span className="absolute top-6 h-[calc(100%-8px)] w-px bg-[color:var(--border)]" />
-                    )}
-                  </div>
-                  <div className={`pb-6 ${index !== mission.phases.length - 1 ? 'border-b border-[color:var(--border)]' : ''}`}>
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <p className={`text-sm font-medium ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-[color:var(--text)]'}`}>
-                        {phase.name}
-                      </p>
-                      <span className="font-mono text-xs text-[color:var(--muted)]">
-                        {phase.startHour}h to {phase.endHour}h
-                      </span>
+            <div className="panel-label">Deep Space Network</div>
+            <div className="dsn-station-list">
+              {DSN_STATIONS.map((station, index) => {
+                const isActive = index === activeStationIndex
+
+                return (
+                  <div key={station.id} className="dsn-station-row">
+                    <div className="dsn-station-name">
+                      <span className={`dsn-station-state${isActive ? ' dsn-station-state--active' : ''}`} />
+                      {station.code}
                     </div>
-                    <p className="mt-2 text-sm text-[color:var(--muted)]">
-                      {isActive ? 'Current segment' : isComplete ? 'Completed segment' : 'Upcoming segment'}
-                    </p>
+
+                    <div className="dsn-bars" aria-hidden="true">
+                      {Array.from({ length: 5 }).map((_, barIndex) => (
+                        <span key={`${station.id}-${barIndex}`} className={`dsn-bar${isActive && barIndex < 3 ? ' dsn-bar--active' : ''}`} />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="card p-6">
-            <p className="section-label">Vehicle</p>
-            <h2 className="section-title mt-2">Mission details</h2>
-            <div className="mt-6 divide-y divide-[color:var(--border)]">
-              {[
-                ['Spacecraft', mission.spacecraft.name],
-                ['Rocket', mission.spacecraft.rocket],
-                ['Launch site', mission.spacecraft.launchSite],
-                ['Splashdown target', mission.spacecraft.splashdownTarget],
-                ['Duration', mission.duration],
-              ].map(([label, value]) => (
-                <div key={label} className="flex items-center justify-between gap-4 py-3">
-                  <span className="text-sm text-[color:var(--muted)]">{label}</span>
-                  <span className="text-sm font-medium text-[color:var(--text)]">{value}</span>
-                </div>
-              ))}
+                )
+              })}
             </div>
-          </div>
 
-          <div className="card p-6">
-            <p className="section-label">Objectives</p>
-            <h2 className="section-title mt-2">Mission goals</h2>
-            <ol className="mt-6 space-y-4">
-              {mission.objectives.map((objective, index) => (
-                <li key={objective} className="grid grid-cols-[28px_1fr] gap-3">
-                  <span className="font-mono text-sm text-[color:var(--muted)]">{String(index + 1).padStart(2, '0')}</span>
-                  <span className="text-sm leading-7 text-[color:var(--text)]">{objective}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </div>
-      </motion.section>
-
-      {apod && apod.url && (
-        <motion.section initial="hidden" animate="show" variants={fadeIn} className="card overflow-hidden">
-          <div className="grid gap-0 lg:grid-cols-[0.88fr_1.12fr]">
-            <div className="min-h-[320px] bg-[color:var(--surface-soft)]">
-              <img src={apod.url} alt={apod.title} className="h-full w-full object-cover" />
+            <div className="mission-sidebar-meta" style={{ marginTop: 14 }}>
+              Feed {dsnTimestamp}
             </div>
-            <div className="p-6 md:p-8">
-              <p className="section-label">NASA image of the day</p>
-              <h2 className="section-title mt-2">{apod.title}</h2>
-              <p className="mt-4 text-base leading-8 text-[color:var(--muted)]">{apod.explanation}</p>
-              <a
-                href={apod.url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-blue-600 transition-colors hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+          </section>
+
+          <section className="mission-sidebar-panel">
+            <header className="panel-header">
+              <span className="panel-label">Orion Window View</span>
+              <span className="panel-live">Live</span>
+            </header>
+
+            <div className="dashboard-window-wrap">
+              <WindowView
+                distanceFromEarthKm={distanceFromEarthKm}
+                distanceFromMoonKm={distanceFromMoonKm}
+                metElapsed={metElapsed}
+              />
+            </div>
+          </section>
+
+          <section className="mission-sidebar-panel">
+            <header className="panel-header">
+              <span className="panel-label">Distance Record</span>
+            </header>
+
+            <div className={`record-row record-row--baseline${recordBroken ? ' record-row--broken' : ''}`}>
+              <span>Apollo 13</span>
+              <span>400,171 km</span>
+            </div>
+
+            <div className="record-row record-row--current">
+              <span>Artemis II</span>
+              <span>{Math.round(distanceFromEarthKm).toLocaleString()} km</span>
+            </div>
+
+            <div className="mission-progress-track" style={{ marginTop: 16 }}>
+              <div
+                className="mission-progress-fill"
+                style={{
+                  width: `${Math.min(100, recordProgress)}%`,
+                  background: recordBroken ? 'var(--go)' : 'var(--accent)',
+                }}
+              />
+            </div>
+
+            {recordBroken ? (
+              <div className="record-new slide-up">★ NEW RECORD</div>
+            ) : null}
+          </section>
+
+          <section className="mission-sidebar-panel dashboard-widget-panel">
+            <header className="panel-header">
+              <span className="panel-label">Solar Eclipse · Crew View</span>
+              <span
+                className={`dashboard-widget-badge${
+                  eclipseState === 'live'
+                    ? ' dashboard-widget-badge--live'
+                    : eclipseState === 'complete'
+                      ? ' dashboard-widget-badge--complete'
+                      : ''
+                }`}
               >
-                Open image
-                <ArrowUpRight className="h-4 w-4" />
-              </a>
+                {eclipseState === 'live' ? 'Live' : eclipseState === 'complete' ? 'Complete' : 'Upcoming'}
+              </span>
+            </header>
+
+            <div className="dashboard-eclipse-shell">
+              <div className="dashboard-eclipse-copy">
+                {eclipseState === 'upcoming' ? (
+                  <>
+                    <div className="dashboard-eclipse-countdown flash" key={eclipseCountdown}>
+                      {eclipseCountdown}
+                    </div>
+                    <p className="dashboard-eclipse-body">until crew witnesses total solar eclipse</p>
+                    <p className="dashboard-eclipse-note">
+                      Moon will block the Sun from Orion&apos;s perspective · 53 min duration
+                    </p>
+                  </>
+                ) : null}
+
+                {eclipseState === 'live' ? (
+                  <>
+                    <div className="dashboard-eclipse-active">
+                      <span className="dashboard-eclipse-active-dot pulse" />
+                      ECLIPSE ACTIVE
+                    </div>
+                    <div className="dashboard-mini-progress">
+                      <div className="dashboard-mini-progress-fill" style={{ width: `${eclipseProgress}%` }} />
+                    </div>
+                    <p className="dashboard-eclipse-body">Moon occluding Sun · Crew in shadow</p>
+                  </>
+                ) : null}
+
+                {eclipseState === 'complete' ? (
+                  <div className="dashboard-eclipse-complete">ECLIPSE COMPLETE ✓</div>
+                ) : null}
+              </div>
+
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 20 20"
+                aria-hidden="true"
+                className="dashboard-eclipse-icon"
+              >
+                <circle cx="10" cy="10" r="8" fill="none" stroke="var(--caution)" strokeWidth="1" />
+                <circle cx="10" cy="10" r="6" fill="var(--surface)" />
+              </svg>
             </div>
-          </div>
-        </motion.section>
-      )}
+          </section>
+
+          <section className="mission-sidebar-panel dashboard-widget-panel">
+            <header className="panel-header">
+              <span className="panel-label">Anomaly Log</span>
+              <span className="dashboard-widget-badge">{ANOMALY_LOG.length} Entries</span>
+            </header>
+
+            <div className="dashboard-anomaly-list">
+              {ANOMALY_LOG.map((entry) => (
+                <article key={`${entry.met}-${entry.system}`} className="dashboard-anomaly-entry">
+                  <div className="dashboard-anomaly-row">
+                    <span
+                      className="dashboard-severity-dot"
+                      style={{ background: getAnomalySeverityColor(entry.severity) }}
+                      aria-hidden="true"
+                    />
+                    <span className="dashboard-anomaly-met">{entry.met}</span>
+                    <span className="dashboard-anomaly-system">{entry.system}</span>
+                    <span
+                      className={`dashboard-anomaly-badge${
+                        entry.resolved ? ' dashboard-anomaly-badge--closed' : ' dashboard-anomaly-badge--open'
+                      }`}
+                    >
+                      {entry.resolved ? 'CLOSED' : 'OPEN'}
+                    </span>
+                  </div>
+
+                  <p className="dashboard-anomaly-event">{entry.event}</p>
+                  {entry.note ? <p className="dashboard-anomaly-note">{entry.note}</p> : null}
+                </article>
+              ))}
+            </div>
+
+            <footer className="dashboard-anomaly-footer">
+              {anomalyOpenCount} open · {anomalyClosedCount} closed
+            </footer>
+          </section>
+
+          <section className="mission-sidebar-panel dashboard-widget-panel">
+            <header className="panel-header">
+              <span className="panel-label">Spacecraft Systems</span>
+            </header>
+
+            <div className="dashboard-systems-grid">
+              {ORION_SYSTEM_STATUS.map((system) => {
+                const tone = getStatusTone(system.status)
+
+                return (
+                  <div
+                    key={system.label}
+                    className={`dashboard-system-cell${
+                      system.status === 'FAULT'
+                        ? ' dashboard-system-cell--fault'
+                        : system.status === 'CAUTION'
+                          ? ' dashboard-system-cell--caution'
+                          : ''
+                    }`}
+                  >
+                    <div className="dashboard-system-name">{system.label}</div>
+                    <div className="dashboard-system-status" style={{ color: tone }}>
+                      <span className="dashboard-system-status-dot" style={{ background: tone }} />
+                      {system.status}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        </div>
+      </aside>
     </div>
   )
 }
