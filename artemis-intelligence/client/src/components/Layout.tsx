@@ -95,6 +95,17 @@ export default function Layout() {
       <main className="app-main">
         <Outlet />
       </main>
+
+      <footer className="app-footer">
+        <a
+          href="https://www.linkedin.com/in/branavan-kuganesan-548244307/"
+          target="_blank"
+          rel="noreferrer"
+          className="app-footer__link"
+        >
+          Open source project by kuganesan branavan
+        </a>
+      </footer>
     </div>
   );
 }

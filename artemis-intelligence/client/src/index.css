@@ -328,13 +328,37 @@ canvas {
 }
 
 .app-shell {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
   background: var(--void);
 }
 
 .app-main {
-  min-height: 100vh;
+  flex: 1 0 auto;
   padding-top: var(--nav-height);
+}
+
+.app-footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  padding: 18px 24px 28px;
+  border-top: 0.5px solid var(--border);
+  background: var(--deep);
+}
+
+.app-footer__link {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  transition: color 120ms ease;
+}
+
+.app-footer__link:hover {
+  color: var(--accent-hi);
 }
 
 .app-nav {
