@@ -1,96 +1,145 @@
 # 🚀 Artemis Intelligence
 
-> A real-time mission control dashboard for NASA's Artemis II — the first crewed cislunar voyage since Apollo 17 in 1972.
+> Real-time mission control dashboard for NASA's Artemis II — the first crewed cislunar mission since Apollo 17 in 1972.
 
 ![Artemis Intelligence Dashboard](https://artemis-intelligence.vercel.app)
 
-**Live Demo → [artemis-intelligence.vercel.app](https://artemis-intelligence.vercel.app)**
+🔴 **Live** → [artemis-intelligence.vercel.app](https://artemis-intelligence.vercel.app)
 
 ---
 
-## What Is This?
+## 🌕 What Is This?
 
-Artemis Intelligence is a full-stack, real-time mission control interface built for NASA's Artemis II mission. It pulls live data from multiple NASA APIs, renders a 3D trajectory visualization, tracks Deep Space Network ground station activity, shows crew profiles, monitors space weather radiation alerts, and includes an AI chat assistant powered by Google Gemini.
+Artemis Intelligence is a full-stack real-time mission control dashboard tracking four real astronauts — **Reid Wiseman, Victor Glover, Christina Koch, and Jeremy Hansen** — as they travel 406,000+ km from Earth. Further than any human has been since 1972.
 
-This is not an official NASA product. It is an independent public engagement project built to make space exploration accessible and exciting for everyone.
-
----
-
-## Features
-
-- **Live Telemetry** — Real spacecraft position, velocity, distance from Earth, and signal delay pulled directly from JPL Horizons
-- **3D Trajectory Visualization** — WebGL globe with animated trajectory arc, Moon, spacecraft dot, and solar flares (Three.js)
-- **Deep Space Network Tracker** — Live map showing which ground station (Goldstone, Madrid, Canberra) is in contact with Orion
-- **Mission Replay** — Full-screen immersive replay of the entire mission with scrubbing, speed controls (1×/2×/3×/4×), and a seekable timeline
-- **Space Weather Alerts** — Solar flares, CMEs, and geomagnetic storm data from NASA DONKI
-- **AI Mission Assistant** — Streaming chat powered by Google Gemini 2.5 Flash with full mission context
-- **Crew Profiles** — Bios and stats for Reid Wiseman, Victor Glover, Christina Koch, and Jeremy Hansen
-- **Anomaly Log** — Real mission anomalies with OPEN/CLOSED status
-- **Spacecraft Systems Monitor** — GO/CAUTION/FAULT status for 9 Orion systems
-- **Splashdown Monitor** — Live Pacific weather for the splashdown zone
-- **Solar Eclipse Countdown** — Crew-perspective eclipse tracker
+Every number on screen is real. Not seeded. Not mocked. **Live.**
 
 ---
 
-## Tech Stack
+## ✨ Features
+
+### 🛰️ Live Telemetry Dashboard
+- Real-time spacecraft position, velocity, and distance from Earth
+- Mission Elapsed Time (MET) clock ticking every second
+- Client-side position interpolation between API calls so numbers are always accurate
+- One-way signal delay — actual light-speed communication time to Orion
+- Spacecraft systems monitor — GO / CAUTION / FAULT for all 9 Orion systems
+- Real mission anomaly log (toilet malfunction, environmental smell — actual reported incidents)
+- Current mission phase with progress bar and countdown to next milestone
+- Orion porthole view simulating what the crew sees based on real distance
+
+### 📡 Deep Space Network Tracker
+- Live map showing which ground station is actively tracking Orion
+- Goldstone (California) · Madrid (Spain) · Canberra (Australia)
+- Spaced 120° apart so at least one always has line of sight to deep space
+- Live XML feed from NASA DSN Now · cached in Redis · refreshed every 8 seconds
+
+### 🌍 Mission Replay (3D WebGL)
+- Full 3D Earth and Moon rendered with Three.js / WebGL
+- Real trajectory coordinates from JPL Horizons ephemeris data
+- Play, pause, scrub through the entire mission timeline
+- Playback speed: 1x · 2x · 3x · 4x
+- 5 mission phases fully seekable — Launch, Translunar Coast, Lunar Flyby, Return, Splashdown
+- 2D SVG fallback for mobile devices where WebGL is not supported
+
+### 👨‍🚀 Crew Profiles
+- All four Artemis II astronauts with real bios, mission stats, and photos
+- Christina Koch — first woman in cislunar space
+- Jeremy Hansen — first Canadian in cislunar space
+
+### 🌤️ Space Weather
+- Live solar flare and geomagnetic storm alerts from NASA DONKI
+- NASA Astronomy Picture of the Day
+- Live spaceflight news feed
+
+### 📊 Mission History (Post-Splashdown)
+- Telemetry snapshots collected every 30 minutes throughout the mission
+- Full historical record of distance, velocity, and phase over time
+- Dashboard falls back to recorded mission data after splashdown with a "Mission Complete" banner
+
+---
+
+## 🛠️ Tech Stack
 
 ### Frontend
-- React 18 + TypeScript
-- Vite 5
-- Three.js (WebGL 3D rendering)
-- Zustand + TanStack React Query
-- Socket.IO client
-- Recharts + Framer Motion
+| Technology | Purpose |
+|---|---|
+| React 18 + TypeScript | UI framework |
+| Three.js / WebGL | 3D trajectory visualization |
+| Zustand | Global state management |
+| TanStack Query | Server state + caching |
+| Socket.IO client | Real-time WebSocket updates |
+| Vite | Build tool |
 
 ### Backend
-- Node.js + TypeScript + Express 4
-- Socket.IO (real-time WebSocket updates)
-- PostgreSQL via Prisma ORM
-- Redis (ioredis) for caching
-- Google Gemini 2.5 Flash (AI chat)
-- JWT authentication + bcryptjs
-- Helmet, rate limiting, CORS
+| Technology | Purpose |
+|---|---|
+| Node.js + Express | API server |
+| Socket.IO | WebSocket server |
+| Prisma ORM | Database access |
+| PostgreSQL | Primary database |
+| Redis | Caching layer (graceful degradation) |
+| JWT + bcrypt | Authentication |
+| Helmet | Security headers |
+| Rate limiting | API protection |
+| node-cron | Telemetry history collection |
+| Row-level security | Database security |
 
-### Infrastructure
-- Frontend: Vercel
-- Backend + Database + Redis: Railway
-- Docker + GitHub Actions CI
-
----
-
-## External APIs
-
-| API | Purpose |
-|-----|---------|
-| JPL Horizons (NASA/Caltech) | Live spacecraft position + velocity |
-| NASA DONKI | Solar flares, CMEs, geomagnetic storms |
+### External APIs
+| API | Data |
+|---|---|
+| NASA JPL Horizons | Spacecraft position, velocity, trajectory |
+| NASA DSN Now | Deep Space Network ground station status |
+| NASA DONKI | Space weather alerts |
 | NASA APOD | Astronomy Picture of the Day |
-| NASA DSN Now | Live ground station contact data |
-| Spaceflight News API | Artemis news articles |
-| Google Gemini 2.5 Flash | AI mission assistant |
+| Spaceflight News API | Live mission news |
+
+### Deployment
+| Service | Purpose |
+|---|---|
+| Railway | Backend + PostgreSQL + Redis |
+| Vercel | Frontend |
+| GitHub | CI/CD — auto-deploy on push to main |
 
 ---
 
-## Getting Started
+## 🔧 Technical Highlights
+
+**Position Interpolation** — JPL Horizons doesn't update every second. Built a client-side extrapolation system using last known velocity to estimate real-time position between API calls. The MET clock and distance counter are always accurate.
+
+**Real-time WebSocket Architecture** — Socket.IO pushes telemetry updates to all connected clients simultaneously. Multiple browser tabs update in sync.
+
+**Redis Caching Layer** — DSN data cached and refreshed every 8 seconds to avoid hammering NASA's servers. Graceful degradation if Redis goes down — app continues working.
+
+**3D WebGL Trajectory** — Three.js renders real JPL ephemeris coordinates as a bezier arc around Earth and Moon. Mobile fallback serves a 2D SVG version automatically.
+
+**Telemetry History Collection** — node-cron job saves a snapshot to PostgreSQL every 30 minutes throughout the mission, building a complete historical record of the entire Artemis II flight.
+
+**Post-Mission Fallback** — After splashdown, the dashboard serves the last recorded snapshot with a Mission Complete banner. The replay page becomes a permanent interactive archive.
+
+---
+
+## 🚀 Running Locally
 
 ### Prerequisites
-- Node.js 22+
+- Node.js 18+
 - PostgreSQL
-- Redis
-- NASA API Key (free at [api.nasa.gov](https://api.nasa.gov))
-- Google Gemini API Key (free at [aistudio.google.com](https://aistudio.google.com))
+- Redis (optional — app degrades gracefully)
 
-### Clone & Install
+### Setup
 
 ```bash
+# Clone the repo
 git clone https://github.com/Branavan2004/artemis-intelligence.git
 cd artemis-intelligence
 
-# Install backend
-cd server && npm install
+# Install backend dependencies
+cd server
+npm install
 
-# Install frontend
-cd ../client && npm install
+# Install frontend dependencies
+cd ../client
+npm install
 ```
 
 ### Environment Variables
@@ -98,95 +147,80 @@ cd ../client && npm install
 Create `server/.env`:
 
 ```env
-DATABASE_URL=postgresql://user:password@localhost:5432/artemis
-REDIS_URL=redis://localhost:6379
-NASA_API_KEY=your_nasa_api_key
-GEMINI_API_KEY=your_gemini_api_key
-JWT_SECRET=your_32_char_secret_here
+DATABASE_URL=postgresql://...
+REDIS_URL=redis://...
+JWT_SECRET=your-32-char-secret
+NASA_API_KEY=your-nasa-api-key
 NODE_ENV=development
-PORT=3000
+PORT=8080
 CLIENT_URL=http://localhost:5173
 ```
 
-Create `client/.env`:
+Get your free NASA API key at [api.nasa.gov](https://api.nasa.gov)
 
-```env
-VITE_API_URL=http://localhost:3000
-VITE_SOCKET_URL=http://localhost:3000
-```
-
-### Run Migrations
+### Run
 
 ```bash
+# Run database migrations
 cd server
 npx prisma migrate deploy
-```
 
-### Start Development
-
-```bash
-# Backend (from /server)
+# Start backend (from /server)
 npm run dev
 
-# Frontend (from /client)
+# Start frontend (from /client)
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173)
+Frontend → [http://localhost:5173](http://localhost:5173)
+Backend → [http://localhost:8080](http://localhost:8080)
 
 ---
 
-## Deployment
+## 📁 Project Structure
 
-- **Frontend** → Vercel (root directory: `client`)
-- **Backend** → Railway (root directory: `server`)
-- **Database** → Railway PostgreSQL
-- **Cache** → Railway Redis
-
----
-
-## Security
-
-- JWT authentication with timing-safe login
-- Zod environment validation at startup
-- 3-tier rate limiting (auth / chat / general)
-- Helmet security headers
-- PostgreSQL Row-Level Security on sensitive tables
-- CORS locked to allowed origins
-- 100KB body size cap
-- No stack traces exposed to client in production
-
----
-
-## Pages
-
-| Route | Description |
-|-------|-------------|
-| `/` | Main mission control dashboard |
-| `/replay` | Immersive 3D mission replay with timeline scrubber |
-| `/news` | Latest Artemis news from Spaceflight News API |
-| `/crew` | Crew profiles — Wiseman, Glover, Koch, Hansen |
+```
+artemis-intelligence/
+├── client/                  # React frontend
+│   ├── src/
+│   │   ├── components/      # UI components
+│   │   ├── pages/           # Dashboard, Replay, Crew, News
+│   │   ├── services/        # API calls
+│   │   └── store/           # Zustand state
+│   └── vercel.json
+├── server/                  # Node.js backend
+│   ├── src/
+│   │   ├── routes/          # API routes
+│   │   ├── services/        # JPL, DSN, telemetry services
+│   │   ├── middleware/       # Auth, rate limiting
+│   │   └── index.ts         # Entry point + cron jobs
+│   └── prisma/
+│       └── schema.prisma    # Database schema
+└── README.md
+```
 
 ---
 
-## Note on Mission Status
+## 🌕 About Artemis II
 
-Artemis II launched in April 2026. After splashdown, live telemetry feeds from JPL Horizons and NASA DSN will no longer update. The dashboard will fall back to the last recorded mission snapshot, and the `/replay` page will serve as the primary feature — showing the complete recorded trajectory of humanity's return to cislunar space.
+Artemis II is NASA's first crewed mission beyond low Earth orbit since Apollo 17 in 1972. The four-person crew performs a free-return trajectory around the Moon — traveling further from Earth than any human in over 50 years — without landing. It is the proving flight for the Orion spacecraft and Space Launch System before the lunar landing of Artemis III.
 
----
-
-## Disclaimer
-
-This is an independent project and is not affiliated with, endorsed by, or connected to NASA or any government agency. All data is sourced from publicly available NASA APIs.
-
----
-
-## Author
-
-Built by [Branavan](https://github.com/Branavan2004) — passionate about space, real-time systems, and making NASA data accessible to everyone.
+**Crew:**
+- **Reid Wiseman** — Commander
+- **Victor Glover** — Pilot
+- **Christina Koch** — Mission Specialist · First woman in cislunar space
+- **Jeremy Hansen** — Mission Specialist · First Canadian in cislunar space
 
 ---
 
-*"We choose to go to the Moon not because it is easy, but because it is hard." — JFK*
+## 📄 License
 
-*Artemis II — humanity's return to cislunar space, April 2026.*
+MIT License — open source, free to use.
+
+---
+
+<p align="center">Built with 🚀 by <a href="https://github.com/Branavan2004">Branavan</a></p>
+<p align="center">
+  <a href="https://artemis-intelligence.vercel.app">Live Demo</a> ·
+  <a href="https://github.com/Branavan2004/artemis-intelligence/issues">Report Bug</a>
+</p>
