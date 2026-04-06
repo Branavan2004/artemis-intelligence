@@ -2613,14 +2613,21 @@ canvas {
 
   .replay-overlay-panel--hud {
     width: auto;
+    order: 1;
+  }
+
+  .replay-immersive__map {
+    order: 2;
   }
 
   .replay-overlay-panel--phase {
     width: auto;
+    order: 3;
   }
 
   .replay-overlay-panel--controls {
     width: auto;
+    order: 4;
   }
 
   .replay-overlay-timeline {
@@ -2628,6 +2635,11 @@ canvas {
     right: auto;
     bottom: auto;
     height: var(--replay-timeline-height);
+    order: 5;
+  }
+
+  .replay-overlay-controls-row {
+    flex-wrap: wrap;
   }
 
   .replay-immersive__details {
