@@ -152,6 +152,7 @@ export default function Replay() {
           <h2 className="replay-phase-name">{activePhase.name}</h2>
           <p className="replay-phase-description">{briefing.summary}</p>
 
+          {/* Apollo distance record rows hidden for demo
           <div className={`replay-record-row${recordBroken ? ' replay-record-row--broken' : ''}`}>
             <span>APOLLO 13</span>
             <span>400,171 km</span>
@@ -170,6 +171,7 @@ export default function Replay() {
               }}
             />
           </div>
+          */}
         </section>
 
         <section className="replay-overlay-panel replay-overlay-panel--controls replay-enter-bottom">

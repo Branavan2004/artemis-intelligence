@@ -54,6 +54,7 @@ const MISSION_LOG: LogEntry[] = [
     detail: 'Moon gravity now dominant — point of no return',
   },
   { metSeconds: 363000, met: '100:50:00', crew: 'All Crew', type: 'science', action: 'AVATAR bone marrow experiment initiated', detail: 'Studying human immune response to deep space radiation' },
+  /* Apollo 13 record entry hidden for demo
   {
     metSeconds: 414600,
     met: '115:10:00',
@@ -62,6 +63,7 @@ const MISSION_LOG: LogEntry[] = [
     action: 'BROKE APOLLO 13 DISTANCE RECORD — 406,773 km',
     detail: "Humanity's farthest point from Earth — record stood since 1970",
   },
+  */
   { metSeconds: 418200, met: '116:10:00', crew: 'All Crew', type: 'comms', action: 'Spoke with ISS crew via audio-only link', detail: 'Deep space to low Earth orbit — two crews in space simultaneously' },
   { metSeconds: 419400, met: '116:30:00', crew: 'Koch', type: 'system', action: 'Orion cabin reconfigured for lunar flyby ops', detail: 'Windows oriented toward Moon, science gear deployed' },
   { metSeconds: 427500, met: '118:45:00', crew: 'All Crew', type: 'milestone', action: 'LUNAR FLYBY WINDOW OPENED — 2:45 PM EDT', detail: 'Orion close enough for Moon observations. Crew at windows.' },
@@ -103,7 +105,7 @@ export default function CrewActivityFeed({ metElapsed = '00:00:00' }: Props) {
   const currentMET = parseMET(metElapsed)
   const feedRef = useRef<HTMLDivElement | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
-  const [autoScroll, setAutoScroll] = useState(true)
+  const [autoScroll, setAutoScroll] = useState(false)
 
   const past = MISSION_LOG.filter((entry) => entry.metSeconds < currentMET - 60)
   const current = MISSION_LOG.filter((entry) => Math.abs(entry.metSeconds - currentMET) <= 1800)

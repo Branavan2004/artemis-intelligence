@@ -420,6 +420,7 @@ export default function Dashboard() {
             </div>
           </section>
 
+          {/* Distance Record section hidden for demo
           <section className="mission-sidebar-panel">
             <header className="panel-header">
               <span className="panel-label">Distance Record</span>
@@ -449,6 +450,7 @@ export default function Dashboard() {
               <div className="record-new slide-up">★ NEW RECORD</div>
             ) : null}
           </section>
+          */}
 
           <section className="mission-sidebar-panel dashboard-widget-panel">
             <header className="panel-header">

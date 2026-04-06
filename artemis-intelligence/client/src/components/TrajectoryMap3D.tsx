@@ -607,13 +607,16 @@ export default function TrajectoryMap3D({
           <div>DIST &nbsp;&nbsp;&nbsp;{safeDistanceFromEarthKm.toLocaleString()} km</div>
           <div>SPEED &nbsp;&nbsp;{safeSpeedKmS.toFixed(3)} km/s</div>
           <div style={{ color: riskTextColor }}>RAD &nbsp;&nbsp;&nbsp;&nbsp;{riskLevel.toUpperCase()} ●</div>
+          {/* Record broken badge hidden for demo
           {safeDistanceFromEarthKm > 400171 ? (
             <div style={{ color: '#00ff88', marginTop: 6, fontSize: 10 }}>
               ★ HUMAN RECORD BROKEN
             </div>
           ) : null}
+          */}
         </div>
 
+        {/* HUMAN DISTANCE RECORD panel hidden for demo
         <div style={{ ...HUD_PANEL, position: 'absolute', top: 12, right: 12, minWidth: 200, fontSize: 10 }}>
           <div style={{ color: '#4488ff', letterSpacing: '0.14em', fontSize: 9, marginBottom: 8 }}>
             HUMAN DISTANCE RECORD
@@ -644,6 +647,7 @@ export default function TrajectoryMap3D({
               : `${(400171 - safeDistanceFromEarthKm).toLocaleString()} km to record`}
           </div>
         </div>
+        */}
       </div>
     </div>
   )
