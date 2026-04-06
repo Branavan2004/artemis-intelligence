@@ -2560,6 +2560,18 @@ canvas {
     --replay-timeline-height: 148px;
   }
 
+  .replay-immersive {
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+
+  .replay-speed-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
   .page-shell,
   .crew-header,
   .news-masthead,
