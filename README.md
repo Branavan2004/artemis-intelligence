@@ -2,7 +2,7 @@
 
 > Real-time mission control dashboard for NASA's Artemis II — the first crewed cislunar mission since Apollo 17 in 1972.
 
-![Artemis Intelligence Dashboard](https://artemis-intelligence.vercel.app)
+
 
 🔴 **Live** → [artemis-intelligence.vercel.app](https://artemis-intelligence.vercel.app)
 
