@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { metStringToSeconds } from '../hooks/useReplayClock'
+import TrajectoryMapFallback, { useStaticTrajectoryFallback } from './TrajectoryMapFallback'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PROPS
@@ -121,6 +122,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
   const [showPanel, setShowPanel] = useState(false)
   const [ready, setReady]       = useState(false)
   const [hovered, setHovered]   = useState<FocusTarget | null>(null)
+  const useFallback = useStaticTrajectoryFallback()
 
   // Scene refs — stable across renders
   const rendRef   = useRef<THREE.WebGLRenderer | null>(null)
@@ -158,8 +160,15 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    if (useFallback) {
+      setReady(true)
+      return
+    }
+
     const mount = mountRef.current
     if (!mount) return
+
+    setReady(false)
 
     // ── Renderer ─────────────────────────────────────────────────────────────
     const W = mount.clientWidth || 900
@@ -595,10 +604,11 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
       renderer.render(scene, cam)
     }
 
-    setTimeout(() => setReady(true), 400)
+    const readyTimeout = window.setTimeout(() => setReady(true), 400)
     animate()
 
     return () => {
+      window.clearTimeout(readyTimeout)
       cancelAnimationFrame(rafRef.current)
       el.removeEventListener('mousedown',  onMouseDown)
       window.removeEventListener('mousemove', onMouseMove)
@@ -613,7 +623,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
         mount.removeChild(renderer.domElement)
       }
     }
-  }, []) // scene built ONCE
+  }, [fullscreen, useFallback]) // scene built when 3D mode is active
 
   // ── Styles ──────────────────────────────────────────────────────────────────
   const riskColor = riskLevel === 'severe'
@@ -622,6 +632,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
     ? '#ffaa00'
     : '#00ee77'
   const showInternalHud = !fullscreen
+  const fallbackProgress = trajectoryFraction ?? computeTrajectoryFraction(metElapsed)
 
   const MONO = '"JetBrains Mono", "Fira Code", "Courier New", monospace'
 
@@ -673,17 +684,26 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
       overflow:     'hidden',
       background:   '#000000',
       userSelect:   'none',
-      cursor:       isDragging.current ? 'grabbing' : 'grab',
+      cursor:       useFallback ? 'default' : isDragging.current ? 'grabbing' : 'grab',
     }}>
 
       {/* ── Three.js canvas (background layer) ── */}
-      <div
-        ref={mountRef}
-        style={{ position: 'absolute', inset: 0, zIndex: 1 }}
-      />
+      {useFallback ? (
+        <TrajectoryMapFallback
+          progress={fallbackProgress}
+          riskLevel={riskLevel}
+          distanceFromEarthKm={Math.max(0, Math.round(distanceFromEarthKm))}
+          metElapsed={metElapsed}
+        />
+      ) : (
+        <div
+          ref={mountRef}
+          style={{ position: 'absolute', inset: 0, zIndex: 1 }}
+        />
+      )}
 
       {/* ── Loading veil ── */}
-      {!ready && (
+      {!useFallback && !ready && (
         <div style={{
           position:   'absolute', inset: 0, zIndex: 50,
           background: '#00010e',
@@ -756,36 +776,38 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
       ) : null}
 
       {/* ── Focus buttons bottom-center ── */}
-      <div style={{
-        position:      'absolute',
-        bottom:        fullscreen ? 'calc(var(--replay-timeline-height, 136px) + 8px)' : 22,
-        left:          '50%',
-        transform:     'translateX(-50%)',
-        zIndex:        fullscreen ? 30 : 20,
-        display:       'flex',
-        gap:           8,
-        pointerEvents: 'auto',
-      }}>
-        {([
-          { id: 'earth'   as FocusTarget, label: 'EARTH',     icon: '⊕' },
-          { id: 'shuttle' as FocusTarget, label: 'ARTEMIS II', icon: '◈' },
-          { id: 'moon'    as FocusTarget, label: 'MOON',       icon: '◯' },
-        ] as const).map(({ id, label, icon }) => (
-          <button
-            key={id}
-            onClick={() => focusFn.current(id)}
-            onMouseEnter={() => setHovered(id)}
-            onMouseLeave={() => setHovered(null)}
-            style={btnStyle(id)}
-          >
-            <span style={dotStyle(id)} />
-            <span>{icon} {label}</span>
-          </button>
-        ))}
-      </div>
+      {!useFallback ? (
+        <div style={{
+          position:      'absolute',
+          bottom:        fullscreen ? 'calc(var(--replay-timeline-height, 136px) + 8px)' : 22,
+          left:          '50%',
+          transform:     'translateX(-50%)',
+          zIndex:        fullscreen ? 30 : 20,
+          display:       'flex',
+          gap:           8,
+          pointerEvents: 'auto',
+        }}>
+          {([
+            { id: 'earth'   as FocusTarget, label: 'EARTH',     icon: '⊕' },
+            { id: 'shuttle' as FocusTarget, label: 'ARTEMIS II', icon: '◈' },
+            { id: 'moon'    as FocusTarget, label: 'MOON',       icon: '◯' },
+          ] as const).map(({ id, label, icon }) => (
+            <button
+              key={id}
+              onClick={() => focusFn.current(id)}
+              onMouseEnter={() => setHovered(id)}
+              onMouseLeave={() => setHovered(null)}
+              style={btnStyle(id)}
+            >
+              <span style={dotStyle(id)} />
+              <span>{icon} {label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {/* ── Shuttle Detail Panel ── */}
-      {!fullscreen && showPanel ? (
+      {!useFallback && !fullscreen && showPanel ? (
         <div style={{
           position:        'absolute',
           top:             16,
@@ -929,7 +951,7 @@ const TelemetryMap3D: React.FC<TelemetryMap3DProps> = ({
             color:         'rgba(50,80,140,0.4)',
             letterSpacing: '0.12em', whiteSpace: 'nowrap',
           }}>
-            DRAG TO ORBIT · SCROLL TO ZOOM · PINCH TO SCALE
+            {useFallback ? 'STATIC 2D TRAJECTORY · MOBILE / WEBGL FALLBACK' : 'DRAG TO ORBIT · SCROLL TO ZOOM · PINCH TO SCALE'}
           </div>
 
           {/* ── Legend ── */}

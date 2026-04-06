@@ -1,6 +1,10 @@
 import { useEffect, useRef, type CSSProperties } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import TrajectoryMapFallback, {
+  missionElapsedToProgress,
+  useStaticTrajectoryFallback,
+} from './TrajectoryMapFallback'
 
 type RiskLevel = 'nominal' | 'elevated' | 'severe'
 
@@ -125,6 +129,7 @@ export default function TrajectoryMap3D({
 }: TrajectoryMap3DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const useFallback = useStaticTrajectoryFallback()
 
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
@@ -182,6 +187,10 @@ export default function TrajectoryMap3D({
   }
 
   useEffect(() => {
+    if (useFallback) {
+      return
+    }
+
     const container = containerRef.current
     const canvas = canvasRef.current
 
@@ -553,7 +562,9 @@ export default function TrajectoryMap3D({
       timeRef.current = 0
       frameRef.current = 0
     }
-  }, [])
+  }, [useFallback])
+
+  const fallbackProgress = missionElapsedToProgress(metElapsed)
 
   return (
     <div
@@ -569,14 +580,23 @@ export default function TrajectoryMap3D({
         border: '1px solid rgba(68,136,255,0.12)',
       }}
     >
-      <canvas
-        ref={canvasRef}
-        style={{
-          display: 'block',
-          width: '100%',
-          height: '100%',
-        }}
-      />
+      {useFallback ? (
+        <TrajectoryMapFallback
+          progress={fallbackProgress}
+          riskLevel={riskLevel}
+          distanceFromEarthKm={Math.max(0, Math.round(safeDistanceFromEarthKm))}
+          metElapsed={metElapsed}
+        />
+      ) : (
+        <canvas
+          ref={canvasRef}
+          style={{
+            display: 'block',
+            width: '100%',
+            height: '100%',
+          }}
+        />
+      )}
 
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
         <div style={{ ...HUD_PANEL, position: 'absolute', top: 12, left: 12, minWidth: 220 }}>

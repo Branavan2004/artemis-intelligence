@@ -13,6 +13,8 @@ const mockCanvasGradient = {
   addColorStop: vi.fn(),
 }
 
+const mockWebGLContext = {}
+
 const mockCanvasContext = {
   createRadialGradient: vi.fn(() => mockCanvasGradient),
   clearRect: vi.fn(),
@@ -27,7 +29,13 @@ const mockCanvasContext = {
 }
 
 HTMLCanvasElement.prototype.getContext = vi.fn(
-  (contextId: string) => (contextId === '2d' ? mockCanvasContext : null),
+  (contextId: string) => (
+    contextId === '2d'
+      ? mockCanvasContext
+      : contextId === 'webgl' || contextId === 'webgl2' || contextId === 'experimental-webgl'
+        ? mockWebGLContext
+        : null
+  ),
 ) as typeof HTMLCanvasElement.prototype.getContext
 
 // ── Mock rAF ──────────────────────────────────────────────────────────────────

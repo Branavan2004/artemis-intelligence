@@ -1848,6 +1848,16 @@ canvas {
   z-index: 2;
 }
 
+.crew-card-photo-skeleton {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(135deg, rgba(44, 52, 66, 0.94), rgba(18, 23, 34, 0.9)),
+    linear-gradient(180deg, rgba(92, 108, 130, 0.08), rgba(255, 255, 255, 0));
+  animation: crew-image-pulse 1.5s ease-in-out infinite;
+}
+
 .crew-card-image {
   position: absolute;
   inset: 0;
@@ -1855,6 +1865,19 @@ canvas {
   height: 100%;
   object-fit: cover;
   z-index: 1;
+  transition:
+    opacity 320ms ease,
+    filter 320ms ease;
+}
+
+.crew-card-image--loading {
+  opacity: 0;
+  filter: blur(18px);
+}
+
+.crew-card-image--loaded {
+  opacity: 1;
+  filter: blur(0);
 }
 
 .crew-card-photo-meta {
@@ -1919,6 +1942,17 @@ canvas {
   font-size: 11px;
   line-height: 1.7;
   color: var(--text-3);
+}
+
+@keyframes crew-image-pulse {
+  0%,
+  100% {
+    opacity: 0.58;
+  }
+
+  50% {
+    opacity: 0.95;
+  }
 }
 
 .news-masthead {
@@ -2521,9 +2555,9 @@ canvas {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 767px) {
   :root {
-    --replay-timeline-height: 160px;
+    --replay-timeline-height: 148px;
   }
 
   .page-shell,
@@ -2550,23 +2584,50 @@ canvas {
     height: 500px;
   }
 
+  .replay-immersive__stage {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: auto;
+    min-height: auto;
+    padding: 12px;
+  }
+
+  .replay-immersive__map {
+    position: relative;
+    inset: auto;
+    height: min(52vh, 420px);
+    min-height: 320px;
+    overflow: hidden;
+    border: 0.5px solid var(--border-2);
+  }
+
+  .replay-overlay-panel,
+  .replay-overlay-timeline {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+  }
+
   .replay-overlay-panel--hud {
-    width: calc(50% - 20px);
-    left: 12px;
-    top: 12px;
+    width: auto;
   }
 
   .replay-overlay-panel--phase {
-    width: calc(50% - 20px);
-    right: 12px;
-    top: 12px;
+    width: auto;
   }
 
   .replay-overlay-panel--controls {
-    left: 12px;
-    right: 12px;
-    bottom: calc(var(--replay-timeline-height) + 8px);
     width: auto;
+  }
+
+  .replay-overlay-timeline {
+    left: auto;
+    right: auto;
+    bottom: auto;
+    height: var(--replay-timeline-height);
   }
 
   .replay-immersive__details {
@@ -2579,11 +2640,6 @@ canvas {
 
   .replay-detail-panel {
     padding: 16px;
-  }
-
-  .replay-immersive__stage {
-    min-height: 640px;
-    height: 640px;
   }
 
   .crew-grid {
@@ -2618,22 +2674,16 @@ canvas {
 
 @media (max-width: 560px) {
   :root {
-    --replay-timeline-height: 152px;
-  }
-
-  .replay-overlay-panel--hud,
-  .replay-overlay-panel--phase {
-    width: auto;
-    right: 12px;
-  }
-
-  .replay-overlay-panel--phase {
-    top: 164px;
-    left: 12px;
+    --replay-timeline-height: 140px;
   }
 
   .replay-overlay-controls-row,
   .replay-overlay-mode-toggle {
     flex-wrap: wrap;
+  }
+
+  .replay-immersive__map {
+    height: min(48vh, 360px);
+    min-height: 280px;
   }
 }

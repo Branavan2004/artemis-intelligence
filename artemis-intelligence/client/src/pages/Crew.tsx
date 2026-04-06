@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 interface CrewMember {
   name: string
   role: string
@@ -47,6 +49,30 @@ const crew: CrewMember[] = [
   },
 ]
 
+function CrewCardImage({ member }: { member: CrewMember }) {
+  const [isLoaded, setIsLoaded] = useState(false)
+  const [hasError, setHasError] = useState(false)
+  const showSkeleton = !isLoaded && !hasError
+
+  return (
+    <div className="crew-card-photo">
+      {showSkeleton ? <div className="crew-card-photo-skeleton" aria-hidden="true" /> : null}
+      <img
+        src={member.image}
+        alt={`${member.name} portrait`}
+        className={`crew-card-image ${isLoaded ? 'crew-card-image--loaded' : 'crew-card-image--loading'}`}
+        style={{ objectPosition: member.imagePosition }}
+        loading="lazy"
+        decoding="async"
+        onLoad={() => setIsLoaded(true)}
+        onError={() => setHasError(true)}
+      />
+      <span className="crew-card-photo-meta">{member.role.split('·')[1]?.trim() ?? 'CREW'}</span>
+      <span className="crew-card-initials">{member.initials}</span>
+    </div>
+  )
+}
+
 export default function Crew() {
   return (
     <div className="crew-page">
@@ -59,17 +85,7 @@ export default function Crew() {
       <section className="crew-grid stagger">
         {crew.map((member) => (
           <article key={member.name} className="crew-card">
-            <div className="crew-card-photo">
-              <img
-                src={member.image}
-                alt={`${member.name} portrait`}
-                className="crew-card-image"
-                style={{ objectPosition: member.imagePosition }}
-                loading="lazy"
-              />
-              <span className="crew-card-photo-meta">{member.role.split('·')[1]?.trim() ?? 'CREW'}</span>
-              <span className="crew-card-initials">{member.initials}</span>
-            </div>
+            <CrewCardImage member={member} />
 
             <div className="crew-card-body">
               <h2 className="crew-card-name">{member.name}</h2>
