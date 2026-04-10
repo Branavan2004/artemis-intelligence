@@ -28,26 +28,17 @@ const app = express();
 const httpServer = createServer(app);
 
 const allowedOrigins = [
-  env.CLIENT_URL,
+  'https://artemis-intelligence.vercel.app',
   'http://localhost:5173',
-  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  env.CLIENT_URL,
 ].filter((origin): origin is string => Boolean(origin));
-
-function isAllowedOrigin(origin: string | undefined) {
-  if (!origin) return true;
-  return allowedOrigins.includes(origin);
-}
 
 export const io = new Server(httpServer, {
   cors: {
-    origin: (origin, callback) => {
-      if (isAllowedOrigin(origin)) {
-        callback(null, true);
-        return;
-      }
-      callback(new Error(`Origin ${origin ?? 'unknown'} not allowed by Socket.IO CORS`));
-    },
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 
@@ -55,14 +46,10 @@ export const io = new Server(httpServer, {
 app.use(helmet());
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (isAllowedOrigin(origin)) {
-        callback(null, true);
-        return;
-      }
-      callback(new Error(`Origin ${origin ?? 'unknown'} not allowed by CORS`));
-    },
+    origin: allowedOrigins,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   }),
 );
 
