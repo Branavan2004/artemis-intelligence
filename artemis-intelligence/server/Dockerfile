@@ -10,11 +10,12 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-# Copy source and config
-COPY . .
+# Copy prisma schema and generate client
+COPY prisma/ ./prisma/
+RUN npx prisma generate
 
-# Generate Prisma client and build TypeScript
-RUN npm run db:generate
+# Copy the rest of the source and build TypeScript
+COPY . .
 RUN npm run build
 
 # Stage 2: Production
@@ -32,12 +33,12 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# Copy compiled code and prisma schema
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
-
-# Generate Prisma client for the production environment
+# Copy prisma schema and generate client for the production environment
+COPY prisma/ ./prisma/
 RUN npx prisma generate
+
+# Copy compiled code from builder
+COPY --from=builder /app/dist ./dist
 
 # Expose the backend port
 EXPOSE 4000
