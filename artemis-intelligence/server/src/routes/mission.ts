@@ -1,11 +1,23 @@
 import { Router, Request, Response } from 'express';
 import { getArtemisIIMissionData, getAPOD, getNASAImages } from '../services/nasa';
+import { getMissionStatus } from '../constants/mission';
+import { MISSION_COMPLETE_FALLBACK } from '../constants/fallback';
 
 export const missionRouter = Router();
 
-missionRouter.get('/', (_req: Request, res: Response) => {
-  const data = getArtemisIIMissionData();
-  res.json(data);
+missionRouter.get('/', async (_req: Request, res: Response) => {
+  try {
+    // 1. Check if mission is complete — return static fallback immediately
+    if (getMissionStatus() === 'Completed') {
+      return res.json(MISSION_COMPLETE_FALLBACK.mission);
+    }
+
+    const data = getArtemisIIMissionData();
+    res.json(data);
+  } catch (error) {
+    console.error('Mission route failed, using fallback:', error);
+    res.json(MISSION_COMPLETE_FALLBACK.mission);
+  }
 });
 
 missionRouter.get('/apod', async (_req: Request, res: Response) => {

@@ -27,7 +27,8 @@ export function getCurrentMissionPhase(now = new Date()): string {
   if (hoursElapsed < 72) return 'Translunar Injection';
   if (hoursElapsed < 96) return 'Lunar Flyby';
   if (hoursElapsed < 216) return 'Return Trajectory';
-  return 'Reentry & Splashdown';
+  if (hoursElapsed < 240) return 'Reentry & Splashdown';
+  return 'Post-Mission';
 }
 
 export function getMissionProgress(now = new Date()): number {

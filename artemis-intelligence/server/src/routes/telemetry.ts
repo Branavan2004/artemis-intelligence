@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getRedis } from '../services/redis';
+import { getMissionStatus } from '../constants/mission';
+import { MISSION_COMPLETE_FALLBACK } from '../constants/fallback';
 
 const HORIZONS_API_URL = 'https://ssd.jpl.nasa.gov/api/horizons.api';
 const DONKI_API_BASE_URL = 'https://api.nasa.gov/DONKI';
@@ -303,6 +305,11 @@ export const telemetryRoutes = Router();
 
 telemetryRoutes.get('/', async (_req: Request, res: Response) => {
   try {
+    // 1. Check if mission is complete — return static fallback immediately
+    if (getMissionStatus() === 'Completed') {
+      return res.json(MISSION_COMPLETE_FALLBACK.telemetry);
+    }
+
     const redis = getRedis();
     const cached = redis ? await redis.get(TELEMETRY_CACHE_KEY) : null;
 
@@ -311,28 +318,33 @@ telemetryRoutes.get('/', async (_req: Request, res: Response) => {
       return;
     }
 
-    const [trajectoryResult, spaceWeatherResult] = await Promise.allSettled([
-      fetchTrajectoryTelemetry(),
-      fetchSpaceWeatherTelemetry(),
-    ]);
+    // 2. Wrap live fetches in try/catch to maintain stability if APIs are offline
+    try {
+      const [trajectoryResult, spaceWeatherResult] = await Promise.allSettled([
+        fetchTrajectoryTelemetry(),
+        fetchSpaceWeatherTelemetry(),
+      ]);
 
-    const payload: TelemetryPayload = {
-      trajectory: trajectoryResult.status === 'fulfilled' ? trajectoryResult.value : null,
-      spaceWeather: spaceWeatherResult.status === 'fulfilled' ? spaceWeatherResult.value : null,
-    };
+      const payload: TelemetryPayload = {
+        trajectory: trajectoryResult.status === 'fulfilled' ? trajectoryResult.value : null,
+        spaceWeather: spaceWeatherResult.status === 'fulfilled' ? spaceWeatherResult.value : null,
+      };
 
-    if (!payload.trajectory && !payload.spaceWeather) {
-      res.status(503).json({ error: 'Telemetry sources unavailable' });
-      return;
+      if (!payload.trajectory && !payload.spaceWeather) {
+        throw new Error('Telemetry sources unavailable');
+      }
+
+      if (redis) {
+        await redis.setex(TELEMETRY_CACHE_KEY, 300, JSON.stringify(payload));
+      }
+
+      res.json(payload);
+    } catch (apiError) {
+      console.error('NASA API failure, using fallback:', apiError);
+      return res.json(MISSION_COMPLETE_FALLBACK.telemetry);
     }
-
-    if (redis) {
-      await redis.setex(TELEMETRY_CACHE_KEY, 300, JSON.stringify(payload));
-    }
-
-    res.json(payload);
   } catch (error) {
     console.error('Telemetry route failed:', error);
-    res.status(500).json({ error: 'Failed to fetch telemetry' });
+    res.json(MISSION_COMPLETE_FALLBACK.telemetry);
   }
 });

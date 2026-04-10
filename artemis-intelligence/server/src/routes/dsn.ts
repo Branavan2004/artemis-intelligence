@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express'
 import { XMLParser } from 'fast-xml-parser'
 import { getRedis } from '../services/redis'
+import { getMissionStatus } from '../constants/mission'
+import { MISSION_COMPLETE_FALLBACK } from '../constants/fallback'
 
 const DSN_FEED_URL = 'https://eyes.nasa.gov/dsn/data/dsn.xml'
 const DSN_CACHE_KEY = 'dsn:live'
@@ -306,6 +308,11 @@ const dsnRoutes = Router()
 
 dsnRoutes.get('/', async (_req: Request, res: Response) => {
   try {
+    // 1. Check if mission is complete — return static fallback immediately
+    if (getMissionStatus() === 'Completed') {
+      return res.json(MISSION_COMPLETE_FALLBACK.dsn);
+    }
+
     const redis = getRedis()
     const cached = redis ? await redis.get(DSN_CACHE_KEY) : null
 
@@ -314,16 +321,22 @@ dsnRoutes.get('/', async (_req: Request, res: Response) => {
       return
     }
 
-    const payload = await fetchDsnPayload()
+    // 2. Wrap live fetch in try/catch to maintain stability
+    try {
+      const payload = await fetchDsnPayload()
 
-    if (redis) {
-      await redis.setex(DSN_CACHE_KEY, 8, JSON.stringify(payload))
+      if (redis) {
+        await redis.setex(DSN_CACHE_KEY, 8, JSON.stringify(payload))
+      }
+
+      res.json(payload)
+    } catch (apiError) {
+      console.error('DSN feed failure, using fallback:', apiError);
+      return res.json(MISSION_COMPLETE_FALLBACK.dsn);
     }
-
-    res.json(payload)
   } catch (error) {
     console.error('DSN route failed:', error)
-    res.status(503).json({ error: 'DSN feed unavailable' })
+    res.json(MISSION_COMPLETE_FALLBACK.dsn)
   }
 })
 
