@@ -1,0 +1,9 @@
+node_modules
+.env
+dist/
+coverage/
+tests/
+Dockerfile
+Dockerfile.dev
+.git
+.github

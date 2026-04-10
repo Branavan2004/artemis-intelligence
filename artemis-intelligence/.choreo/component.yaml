@@ -1,0 +1,9 @@
+schemaVersion: 1.0
+name: artemis-intelligence-backend
+type: Service
+buildPack: NodeJS
+language: TypeScript
+languageVersion: "18"
+port: 4000
+buildCommand: npm ci && npm run db:generate && npm run build
+startCommand: node dist/index.js
