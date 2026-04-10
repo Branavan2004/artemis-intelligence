@@ -1,0 +1,27 @@
+# WSO2 API Manager Configuration
+name: ArtemisIntelligence
+version: "v1.0"
+context: /artemis
+visibility: PUBLIC
+transports:
+  - http
+  - https
+  - ws
+throttlingTiers:
+  - name: Unlimited
+    description: General access for telemetry feeds
+  - name: 10PerMin
+    description: Restricted access for authentication and sensitive ops
+  - name: 50PerMin
+    description: Default general rate limit
+authType:
+  - Application
+  - Application User
+swaggerReference: openapi.yaml
+endpointConfig:
+  production_endpoints:
+    url: https://artemis-intelligence-backend.railway.app
+    config:
+      retryTimeOut: 60
+  sandbox_endpoints:
+    url: http://localhost:4000

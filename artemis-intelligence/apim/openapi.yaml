@@ -1,0 +1,239 @@
+openapi: 3.0.3
+info:
+  title: Artemis Intelligence API
+  description: |
+    Real-time mission control API for Artemis II telemetry, space weather, and mission monitoring.
+    
+    ### Rate Limiting
+    - **General API**: 100 requests per minute.
+    - **Authentication**: 10 requests per 15 minutes.
+    - **Telemetry**: High-frequency real-time updates.
+  version: 1.0.0
+servers:
+  - url: http://localhost:4000/api
+    description: Local Development Server
+  - url: https://api.artemis-intelligence.com/api
+    description: Production Gateway
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+    
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+
+    Telemetry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        trajectory:
+          type: object
+          properties:
+            distanceFromEarthKm:
+              type: number
+            distanceFromMoonKm:
+              type: number
+            speedKmS:
+              type: number
+        spaceWeather:
+          type: object
+          properties:
+            riskLevel:
+              type: string
+              enum: [nominal, elevated, severe]
+
+    DSNStatus:
+      type: object
+      properties:
+        stations:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              friendlyName:
+                type: string
+              isActive:
+                type: boolean
+        orionInContact:
+          type: boolean
+        fetchedAt:
+          type: string
+          format: date-time
+
+    MissionData:
+      type: object
+      properties:
+        name:
+          type: string
+        progress:
+          type: number
+        status:
+          type: string
+        phase:
+          type: string
+
+    Anomaly:
+      type: object
+      properties:
+        timestamp:
+          type: integer
+          format: int64
+        system:
+          type: string
+        status:
+          type: string
+        severity:
+          type: string
+          enum: [INFO, WARNING, CRITICAL]
+
+paths:
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: User Login
+      description: |
+        Authenticates a user and returns a JWT.
+        **Throttling**: 10 requests / 15 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get Current User
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user data
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /telemetry/current:
+    get:
+      tags: [Telemetry]
+      summary: Get Current Telemetry
+      description: |
+        Returns real-time trajectory and space weather telemetry.
+        **Note**: For live updates, subscribe to the WebSocket feed at `/socket.io`.
+      responses:
+        '200':
+          description: Telemetry data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Telemetry'
+
+  /dsn/status:
+    get:
+      tags: [DSN]
+      summary: Get Deep Space Network Status
+      description: |
+        Returns the current tracking status of DSN ground stations.
+        **Throttling**: 8-second refresh rate alignment.
+      responses:
+        '200':
+          description: DSN status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DSNStatus'
+
+  /mission/phase:
+    get:
+      tags: [Mission]
+      summary: Get Current Mission Phase
+      responses:
+        '200':
+          description: Mission phase data
+
+  /crew:
+    get:
+      tags: [Mission]
+      summary: Get Crew Information
+      responses:
+        '200':
+          description: List of crew members and their roles
+
+  /anomalies:
+    get:
+      tags: [Anomalies]
+      summary: Get Recent Anomalies
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of detected anomalies
+
+  /anomalies/ingest:
+    post:
+      tags: [Anomalies]
+      summary: Ingest Managed Anomaly
+      description: Endpoint for WSO2 Streaming Integrator to push detected faults.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Anomaly'
+      responses:
+        '202':
+          description: Anomaly report accepted
+
+responses:
+  UnauthorizedError:
+    description: Access token is missing or invalid
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/Error'
+  TooManyRequestsError:
+    description: Rate limit exceeded
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/Error'

@@ -1,0 +1,33 @@
+# Artemis Intelligence Throttling Policies
+policies:
+  - name: GlobalPolicy
+    description: 100 requests per 1 minute (General Limiter)
+    defaultLimit:
+      type: REQUEST_COUNT
+      requestCount: 100
+      unitTime: 1
+      timeUnit: min
+  
+  - name: AuthPolicy
+    description: 10 requests per 15 minutes (Auth Limiter)
+    defaultLimit:
+      type: REQUEST_COUNT
+      requestCount: 10
+      unitTime: 15
+      timeUnit: min
+
+  - name: TelemetryPolicy
+    description: Unlimited access for real-time telemetry streams
+    defaultLimit:
+      type: REQUEST_COUNT
+      requestCount: 1000000
+      unitTime: 1
+      timeUnit: min
+
+  - name: DSNPolicy
+    description: 8 second refresh rate aligned with NASA DSN cache
+    defaultLimit:
+      type: REQUEST_COUNT
+      requestCount: 1
+      unitTime: 8
+      timeUnit: sec

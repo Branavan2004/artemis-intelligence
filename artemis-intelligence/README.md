@@ -56,3 +56,18 @@ Artemis Intelligence leverages **WSO2 Streaming Integrator** for real-time compl
   - Seamless integration with the existing backend via HTTP hooks.
 
 Refer to the [Streaming Integrator README](streaming-integrator/README.md) for detailed configuration and setup instructions.
+
+---
+
+## 🔒 WSO2 API Manager
+
+API governance and security for Artemis Intelligence are managed via **WSO2 API Manager**.
+
+- **OpenAPI Spec**: Defined in `apim/openapi.yaml`.
+- **Governance**: 
+  - Standardized JWT Authentication.
+  - Granular throttling policies (Auth, Telemetry, and DSN).
+  - Protocol support for HTTP, HTTPS, and WebSockets (Socket.IO).
+- **Security**: The APIM gateway provides a secure ingress point, shielding the backend and standardizing interactions with external NASA datasets.
+
+More details can be found in the [API Manager README](apim/README.md).
