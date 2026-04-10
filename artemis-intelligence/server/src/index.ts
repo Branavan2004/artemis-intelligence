@@ -24,6 +24,13 @@ import { generalLimiter, chatLimiter } from './middleware/rateLimiter';
 import { initRedis } from './services/redis';
 import { getMissionUpdate } from './constants/mission';
 
+// ── Startup Diagnostics ───────────────────────────────────────────────────────
+console.log('🚀 Artemis Intelligence Server starting...', {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: process.env.PORT,
+  PWD: process.cwd(),
+});
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -112,4 +119,13 @@ async function main() {
   });
 }
 
-main().catch(console.error);
+// Wrap entire startup in try/catch to ensure hidden validation/init errors are logged
+try {
+  main().catch((err) => {
+    console.error('SERVER STARTUP ERROR (Async):', err);
+    process.exit(1);
+  });
+} catch (err) {
+  console.error('SERVER STARTUP ERROR (Sync):', err);
+  process.exit(1);
+}
