@@ -36,6 +36,9 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 
+# Generate Prisma client for the production environment
+RUN npx prisma generate
+
 # Expose the backend port
 EXPOSE 4000
 
