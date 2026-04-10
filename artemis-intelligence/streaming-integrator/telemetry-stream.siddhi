@@ -1,0 +1,49 @@
+@App:name("ArtemisTelemetryPipeline")
+@App:description("Event-driven processing for Artemis II real-time telemetry")
+
+/*
+    DEFINITIONS
+*/
+
+-- Incoming telemetry data
+@source(type='http', receiver.url='http://0.0.0.0:8006/telemetry', @map(type='json'))
+define stream TelemetryStream (timestamp long, distanceKm double, velocityKmh double, missionPhase string, signalDelaySeconds double, systemStatus string, systemName string);
+
+-- Incoming Deep Space Network status
+@source(type='http', receiver.url='http://0.0.0.0:8006/dsn', @map(type='json'))
+define stream DSNStatusStream (timestamp long, stationName string, isTracking bool, signalStrength double);
+
+-- Stream for detected anomalies
+@sink(type='log', prefix='[ANOMALY]')
+@sink(type='http', publisher.url='http://localhost:4000/api/anomalies/ingest', method='POST', @map(type='json'))
+define stream AnomalyAlertStream (timestamp long, system string, status string, severity string);
+
+-- Stream for aggregated telemetry metrics
+@sink(type='log', prefix='[AGGREGATE]')
+define stream TelemetryAggregateStream (avgVelocity double, avgDistance double, missionPhase string);
+
+/*
+    QUERIES
+*/
+
+-- 1. Anomaly Detection: Identify system faults
+@info(name='FaultDetectionQuery')
+from TelemetryStream[systemStatus == 'FAULT']
+select timestamp, systemName as system, systemStatus as status, 'CRITICAL' as severity
+insert into AnomalyAlertStream;
+
+-- 2. Windows & Aggregations: Average velocity and distance over last 5 minutes
+@info(name='TelemetryWindowQuery')
+from TelemetryStream#window.time(5 min)
+select avg(velocityKmh) as avgVelocity, avg(distanceKm) as avgDistance, missionPhase
+group by missionPhase
+insert into TelemetryAggregateStream;
+
+-- 3. Logging all incoming telemetry for debugging
+@info(name='DebugLogQuery')
+from TelemetryStream
+select *
+insert into LogStream;
+
+@sink(type='log', prefix='[TELEMETRY]')
+define stream LogStream (timestamp long, distanceKm double, velocityKmh double, missionPhase string, signalDelaySeconds double, systemStatus string, systemName string);

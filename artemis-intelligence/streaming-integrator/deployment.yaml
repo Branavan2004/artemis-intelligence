@@ -1,0 +1,36 @@
+# WSO2 Streaming Integrator Deployment Configuration
+wso2.si.worker:
+  # Port configuration
+  ports:
+    - name: dashboard
+      port: 9090
+      protocol: TCP
+    - name: receiver
+      port: 8006
+      protocol: TCP
+
+  # Resource limits
+  resources:
+    cpu: "1"
+    memory: "2Gi"
+
+# Database configuration for persistence and state
+datasources:
+  - name: WSO2_SI_DB
+    description: "PostgreSQL datasource for Artemis Intelligence state"
+    jndiConfig:
+      name: jdbc/WSO2_SI_DB
+    definition:
+      type: RDBMS
+      configuration:
+        jdbcUrl: "jdbc:postgresql://localhost:5432/artemis_db"
+        username: "${DB_USER}"
+        password: "${DB_PASSWORD}"
+        driverClassName: "org.postgresql.Driver"
+        maxActive: 50
+        minIdle: 5
+
+# Siddhi App Deployment
+siddhi.apps:
+  - name: ArtemisTelemetryPipeline
+    path: "./telemetry-stream.siddhi"

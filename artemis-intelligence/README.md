@@ -42,3 +42,17 @@ For production reliability, add the following as **Managed Services** in your Ch
 - **Backend**: Node.js, Express, Socket.IO, Prisma ORM.
 - **Database**: PostgreSQL, Redis.
 - **Authentication**: JWT.
+
+---
+
+## 📡 WSO2 Streaming Integrator
+
+Artemis Intelligence leverages **WSO2 Streaming Integrator** for real-time complex event processing (CEP). This models our telemetry pipeline as a formal event-driven integration.
+
+- **Siddhi Pipeline**: Located in `streaming-integrator/telemetry-stream.siddhi`.
+- **Key Features**:
+  - Real-time anomaly detection for system faults.
+  - 5-minute sliding window aggregates for velocity and distance.
+  - Seamless integration with the existing backend via HTTP hooks.
+
+Refer to the [Streaming Integrator README](streaming-integrator/README.md) for detailed configuration and setup instructions.
