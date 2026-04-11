@@ -1,3 +1,6 @@
+// DIAGNOSTIC - remove after debugging
+process.stdout.write('PROCESS STARTED\n');
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
