@@ -37,7 +37,7 @@ function requireSecret(fieldName: string, value: string | undefined): string {
 }
 
 const envSchema = z.object({
-  PORT: z.string().default('4000'),
+  PORT: z.string().default('8080'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   REDIS_URL: z.string().optional(),
